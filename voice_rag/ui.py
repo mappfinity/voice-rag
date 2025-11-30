@@ -166,7 +166,7 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                                    inputs=[audio_input, v_tts_toggle, v_topk],
                                    outputs=[voice_chat, v_contexts, v_audio_out, v_status])
 
-        gr.Markdown("Made with ❤️ — Local RAG demo. Ensure Ollama & models are running.")
+        gr.Markdown("Local RAG demo. Ensure Ollama & models are running. By mappfinity 2025")
 
     return demo
 
