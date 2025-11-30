@@ -54,7 +54,7 @@ CONFIG = {
     "chroma_dir": "voice_rag/chroma_db",
     "docs_dir": "voice_rag/docs",
     "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5-coder:7b-instruct",
+    "ollama_model": "qwen2.5:3b",
     "record_seconds_default": 10,
     "sample_rate": 16000,
     "mic_device_id": None,
