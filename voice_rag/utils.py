@@ -3,33 +3,62 @@ import logging
 import subprocess
 from typing import List, Tuple
 
-# -----------------------------
+# ---------------------------------------------------------------------------
 # Logger setup
-# -----------------------------
+# ---------------------------------------------------------------------------
 logger = logging.getLogger("voice_rag.utils")
 if not logger.hasHandlers():
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s", "%Y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(
+        "[%(levelname)s] %(asctime)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+    )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
 
-# -----------------------------
-# Utilities
-# -----------------------------
+# ---------------------------------------------------------------------------
+# Logging utilities
+# ---------------------------------------------------------------------------
 def die(msg: str):
-    """Log critical error and exit."""
+    """
+    Log a critical error and exit the program.
+
+    Parameters
+    ----------
+    msg : str
+        Error message to log.
+    """
     logger.critical(msg)
     raise SystemExit(msg)
 
+
 def info(msg: str):
-    """Log informational message."""
+    """
+    Log an informational message.
+
+    Parameters
+    ----------
+    msg : str
+        Message to log.
+    """
     logger.info(msg)
 
+
 def warn(msg: str):
-    """Log warning message."""
+    """
+    Log a warning message.
+
+    Parameters
+    ----------
+    msg : str
+        Message to log.
+    """
     logger.warning(msg)
 
+
+# ---------------------------------------------------------------------------
+# Command execution utility
+# ---------------------------------------------------------------------------
 def run_cmd(
         cmd: List[str],
         capture_output: bool = True,
@@ -37,9 +66,22 @@ def run_cmd(
         timeout: int = 180
 ) -> Tuple[int, str, str]:
     """
-    Run a shell command safely.
+    Execute a shell command safely and return its results.
 
-    Returns:
+    Parameters
+    ----------
+    cmd : List[str]
+        Command and arguments to run.
+    capture_output : bool
+        If True, capture stdout and stderr.
+    text : bool
+        If True, return output as text instead of bytes.
+    timeout : int
+        Timeout in seconds.
+
+    Returns
+    -------
+    Tuple[int, str, str]
         returncode, stdout, stderr
     """
     try:

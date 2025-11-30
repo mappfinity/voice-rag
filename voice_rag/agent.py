@@ -17,8 +17,16 @@ from voice_rag.agent_helpers import save_numpy_to_wav, record_to_numpy
 @dataclass
 class LocalRAGAgent:
     """
-    A fully local retrieval-augmented generation agent with STT, TTS, Ollama LLM,
-    and optional reranking. All design is optimized for clarity and robustness.
+    A fully local Retrieval-Augmented Generation agent.
+
+    Components:
+    - Local LLM (Ollama)
+    - Local STT
+    - Local TTS
+    - Local embedding index
+    - Optional reranker
+
+    Designed for offline reliability with simple, predictable behavior.
     """
     ollama: Any
     stt: Any
@@ -29,24 +37,18 @@ class LocalRAGAgent:
 
     system_prompt: str = (
         "You are a highly reliable, detail-oriented assistant.\n\n"
-        "Always begin by thoroughly analyzing the provided CONTEXTS. Treat them as "
-        "the primary source of truth. Do not assume, infer, or speculate beyond what "
-        "the CONTEXTS explicitly state.\n\n"
-        "When relevant information exists in the CONTEXTS, summarize, synthesize, and "
-        "explain it in your own words. Do not copy long passages verbatim unless quoting "
-        "is essential.\n\n"
-        "Use internal knowledge only to clarify or organize, never to assert unverified facts. "
-        "Label unsupported claims as uncertain or unknown.\n\n"
-        "Avoid making statements about product features or availability unless explicitly "
-        "supported by the CONTEXTS.\n\n"
-        "Produce clear, well-structured explanations suitable for text-to-speech. "
-        "Avoid raw JSON, internal markers, or metadata.\n"
+        "Always begin by analyzing the provided CONTEXTS. Treat them as the source "
+        "of truth and avoid speculation.\n\n"
+        "Summarize and synthesize relevant content in your own words. Use internal "
+        "knowledge only for clarification.\n\n"
+        "Avoid claims about product features unless explicitly supported.\n\n"
+        "Produce clean, structured output suitable for text-to-speech.\n"
     )
 
     reranker: Optional[ReRanker] = None
 
     # ----------------------------------------------------------------------
-    # Post-init: setup reranker if needed
+    # Initialize reranker if not supplied
     # ----------------------------------------------------------------------
     def __post_init__(self):
         if self.reranker is None:
@@ -56,12 +58,12 @@ class LocalRAGAgent:
             )
 
     # ----------------------------------------------------------------------
-    # Prompt builder
+    # Full prompt builder (debug / verbose)
     # ----------------------------------------------------------------------
     def build_prompt(self, user_query: str, docs: List[Dict[str, Any]]) -> str:
         """
-        Assemble a full prompt including context blocks and system prompt.
-        Uses raw (uncompressed) text — typically for debugging / analysis.
+        Build a verbose prompt that includes full context chunks.
+        Used mainly for debugging or manual analysis.
         """
         parts = []
         for i, d in enumerate(docs):
@@ -84,12 +86,12 @@ class LocalRAGAgent:
         )
 
     # ----------------------------------------------------------------------
-    # Clean text for TTS safety
+    # Minimal cleanup for safe TTS consumption
     # ----------------------------------------------------------------------
     def clean_for_tts(self, text: str, *args, **kwargs) -> str:
         """
-        Performs extremely conservative cleanup to reduce TTS crashes.
-        Removes markdown, emojis, IPA, and non-ASCII.
+        Strip potentially problematic characters for TTS engines.
+        Conservative filtering only: markdown markers, emojis, non-ASCII, etc.
         """
         import re
 
@@ -98,11 +100,11 @@ class LocalRAGAgent:
 
         text = re.sub(r"[*#`]", "", text)
         text = re.sub(r"\s+", " ", text)
-        text = re.sub(r"[^\x00-\x7F]+", "", text)  # Strip non-ASCII
+        text = re.sub(r"[^\x00-\x7F]+", "", text)
         return text.strip()
 
     # ----------------------------------------------------------------------
-    # Compress contexts for LLM (for length control)
+    # Compress long contexts to fit within LLM input limits
     # ----------------------------------------------------------------------
     def _compress_contexts_for_llm(
             self,
@@ -110,12 +112,13 @@ class LocalRAGAgent:
             max_chars_per_chunk: Optional[int] = None
     ) -> str:
         """
-        Produces trimmed preview of each context chunk.
-        Prevents LLM runaway input size.
+        Create truncated previews for each retrieved chunk.
+
+        Helps maintain prompt size stability by showing only head/tail portions
+        of long passages.
         """
         if max_chars_per_chunk is None:
-            max_chars_per_chunk = CONFIG.get(
-                "context_chunk_preview_chars", 1024)
+            max_chars_per_chunk = CONFIG.get("context_chunk_preview_chars", 1024)
 
         parts = []
 
@@ -123,6 +126,7 @@ class LocalRAGAgent:
             txt = d.get("text", "") or ""
             meta = d.get("meta", {}) or {}
 
+            # Head+tail truncation if needed
             if len(txt) > max_chars_per_chunk:
                 head_len = int(max_chars_per_chunk * 0.6)
                 tail_len = int(max_chars_per_chunk * 0.4)
@@ -142,7 +146,7 @@ class LocalRAGAgent:
         return "\n\n".join(parts) if parts else "<<NO_CONTEXT>>"
 
     # ----------------------------------------------------------------------
-    # Answer from text
+    # Text-based RAG answer
     # ----------------------------------------------------------------------
     def answer_text(
             self,
@@ -151,12 +155,12 @@ class LocalRAGAgent:
             speak: bool = False
     ) -> str:
         """
-        Main RAG text answering routine.
-        - Retrieves relevant passages
-        - Reranks
-        - Builds compressed prompt
-        - Queries LLM
-        - Optionally TTS speaks the answer
+        Core RAG pipeline:
+        1. Retrieve candidates
+        2. Rerank
+        3. Compress context
+        4. Query LLM
+        5. Optional TTS
         """
         if not user_query or not user_query.strip():
             return ""
@@ -164,7 +168,7 @@ class LocalRAGAgent:
         user_query = user_query.strip()
         info(f"Query: {user_query[:120]}")
 
-        # Retrieval upper bounds
+        # Retrieval bounds
         top_k = max(1, min(top_k, CONFIG.get("max_retrieval_topk", 8)))
 
         # Initial retrieval
@@ -177,7 +181,7 @@ class LocalRAGAgent:
             warn(f"Initial retrieval failed: {e}")
             retrieved = []
 
-        # Convert to reranker candidate format
+        # Format for reranker
         candidates = []
         for i, item in enumerate(retrieved):
             try:
@@ -196,7 +200,7 @@ class LocalRAGAgent:
                 "embedding": None
             })
 
-        # Reranking
+        # Reranking (MMR by default)
         try:
             reranked = self.reranker.rerank(
                 user_query,
@@ -208,7 +212,7 @@ class LocalRAGAgent:
             warn(f"Reranking failed: {e}")
             reranked = candidates[:top_k]
 
-        # Build compressed contexts
+        # Build compressed prompt
         ctx_for_llm = self._compress_contexts_for_llm(
             reranked,
             max_chars_per_chunk=CONFIG.get("context_chunk_preview_chars", 1024)
@@ -231,10 +235,10 @@ class LocalRAGAgent:
             warn(f"LLM generation failed: {e}")
             resp = "Sorry, I couldn't generate a response."
 
-        # Save to history
+        # History logging
         self.history.append((user_query, resp))
 
-        # Optional speaking
+        # Optional TTS
         if speak and resp:
             safe = self.clean_for_tts(resp)
             try:
@@ -245,7 +249,7 @@ class LocalRAGAgent:
         return resp
 
     # ----------------------------------------------------------------------
-    # Answer from audio file
+    # RAG answer from prerecorded audio
     # ----------------------------------------------------------------------
     def answer_voice_file(
             self,
@@ -254,7 +258,7 @@ class LocalRAGAgent:
             speak: bool = True
     ) -> str:
         """
-        STT → RAG pipeline for prerecorded audio files.
+        STT → RAG pipeline for existing audio files.
         """
         if not audio_path:
             return "Invalid audio path."
@@ -271,7 +275,7 @@ class LocalRAGAgent:
         return self.answer_text(text, top_k=top_k, speak=speak)
 
     # ----------------------------------------------------------------------
-    # Record audio and answer
+    # Record microphone audio and answer
     # ----------------------------------------------------------------------
     def record_and_answer(
             self,
@@ -280,11 +284,12 @@ class LocalRAGAgent:
             speak: bool = True
     ) -> str:
         """
-        Record microphone audio → save temporary WAV → STT → RAG.
+        Record → WAV → STT → RAG pipeline.
+        Uses temp files to maintain consistent STT behavior.
         """
         duration = duration or CONFIG.get("record_seconds_default", 5)
 
-        # Record
+        # Capture microphone input
         try:
             audio, fs = record_to_numpy(duration_seconds=duration)
         except Exception as e:
@@ -293,17 +298,18 @@ class LocalRAGAgent:
 
         tmp_path = f"tmp_{uuid.uuid4().hex}.wav"
 
-        # Save to temp file
+        # Persist temp file for STT
         try:
             save_numpy_to_wav(audio, tmp_path, fs=fs)
         except Exception as e:
             warn(f"Saving temporary WAV failed: {e}")
             return "Could not process recorded audio."
 
-        # Use STT → RAG pipeline
+        # Convert to text → RAG
         try:
             return self.answer_voice_file(tmp_path, top_k=top_k, speak=speak)
         finally:
+            # Clean temp file
             try:
                 os.remove(tmp_path)
             except Exception:

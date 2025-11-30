@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 from .utils import info, warn, die
 from .config import CONFIG
-import re, os
+import re
+import os
 
 # Optional libraries
 try:
@@ -27,24 +28,33 @@ except Exception:
 
 
 # -----------------------------
-# PDF repair + Text extraction
+# PDF Repair Helpers
 # -----------------------------
 def _repair_pdf_with_fitz(src: Path, out: Path) -> bool:
-    """Attempt to repair a PDF using PyMuPDF (fitz)."""
+    """
+    Attempt to repair a PDF using PyMuPDF.
+
+    Returns:
+        True if repair produced a viable PDF; False otherwise.
+    """
     if not HAS_FITZ:
         warn("PyMuPDF (fitz) not available; cannot repair PDF.")
         return False
+
     try:
         doc = fitz.open(str(src))
         doc.save(str(out), garbage=4, deflate=True, incremental=False)
         doc.close()
+
         if out.exists() and out.stat().st_size > 1024:
             info(f"Repaired PDF written: {out}")
             return True
-        warn(f"Repaired PDF is suspiciously small or missing: {out}")
+
+        warn(f"Repaired PDF is too small or missing: {out}")
         return False
+
     except Exception as e:
-        warn(f"fitz repair failed for {src}: {e}")
+        warn(f"PDF repair failed for {src}: {e}")
         try:
             if out.exists():
                 out.unlink()
@@ -53,18 +63,32 @@ def _repair_pdf_with_fitz(src: Path, out: Path) -> bool:
         return False
 
 
+# -----------------------------
+# PDF / TXT Loader + Chunker
+# -----------------------------
 @dataclass
 class PDFTextLoader:
+    """
+    Load text from PDF or TXT files, split into sentences, and produce
+    overlapping text chunks suitable for embedding/indexing.
+    """
     pdf_paths: List[Path]
     chunk_size: int = 900
     chunk_overlap: int = 200
 
     # -----------------------------
-    # Extract text from PDF or TXT
+    # Text Extraction
     # -----------------------------
     def extract_text(self, path: Path) -> str:
+        """
+        Extract text from a .txt or .pdf file.
+
+        Returns:
+            Raw extracted text. Returns an empty string on failure.
+        """
         info(f"Extracting text: {path}")
 
+        # Text file read
         if path.suffix.lower() == ".txt":
             try:
                 return path.read_text(encoding="utf-8")
@@ -72,11 +96,12 @@ class PDFTextLoader:
                 warn(f"Failed to read text file {path}: {e}")
                 return ""
 
+        # PDF read requires pypdf
         if PdfReader is None:
             die("pypdf is required to parse PDFs. Install with `pip install pypdf`.")
 
         def _try_read(p: Path) -> Optional[str]:
-            """Attempt reading PDF text with pypdf."""
+            """Try extracting text from a PDF via pypdf."""
             try:
                 reader = PdfReader(str(p))
                 if getattr(reader, "is_encrypted", False):
@@ -85,71 +110,86 @@ class PDFTextLoader:
                     except Exception:
                         info(f"Encrypted PDF cannot be auto-decrypted: {p}")
                         return ""
+
                 pages = []
                 for i, page in enumerate(reader.pages):
                     try:
                         pages.append(page.extract_text() or "")
                     except Exception as e:
-                        warn(f"Page {i} parse error for {p}: {e}")
+                        warn(f"Page {i} parse error in {p}: {e}")
                         pages.append("")
+
                 return "\n\n".join(pages).strip()
-            except Exception as e:
+
+            except Exception:
                 raise
 
-        # Attempt direct read
+        # First attempt
         try:
-            t = _try_read(path)
-            if t and t.strip():
-                return t
-            if t == "":
-                info(f"No text found in {path} (maybe image-only).")
+            text = _try_read(path)
+            if text and text.strip():
+                return text
+            if text == "":
+                info(f"No text found in {path} (possible image-only PDF).")
                 return ""
         except Exception as e:
             info(f"pypdf initial read failed for {path}: {e}")
 
-        # Attempt repair
+        # Repair attempt
         if HAS_FITZ:
             repaired = path.with_name(f"{path.stem}._repaired{path.suffix}")
-            info(f"Attempting repair: {path} -> {repaired}")
+            info(f"Attempting repair: {path} → {repaired}")
+
             if _repair_pdf_with_fitz(path, repaired):
                 try:
-                    t2 = _try_read(repaired)
-                    if t2 and t2.strip():
+                    repaired_text = _try_read(repaired)
+                    if repaired_text and repaired_text.strip():
                         if not CONFIG.get("save_repaired_pdf", False):
                             try:
                                 repaired.unlink()
                             except Exception:
                                 pass
-                        return t2
-                    info(f"Repaired PDF had no text: {repaired}")
+                        return repaired_text
+
+                    info(f"Repaired PDF had no extractable text: {repaired}")
+
                 except Exception as e:
-                    info(f"pypdf read failed on repaired PDF {repaired}: {e}")
+                    info(f"Failed to parse repaired PDF {repaired}: {e}")
             else:
-                info("fitz failed to repair PDF.")
+                info("PDF repair failed.")
         else:
-            warn("fitz not available; skipping repair.")
+            warn("PyMuPDF not available; skipping repair step.")
 
         info(f"Skipping PDF after failed parse/repair: {path}")
         return ""
 
     # -----------------------------
-    # Sentence splitting
+    # Sentence Splitting
     # -----------------------------
     def _sentence_split(self, text: str) -> List[str]:
-        """Split text into sentences using NLTK if available, otherwise regex."""
-        try:
-            if HAS_NLTK_SENT:
+        """
+        Split text into sentences using NLTK if available; otherwise use regex.
+        """
+        if HAS_NLTK_SENT:
+            try:
                 return sent_tokenize(text)
-        except Exception:
-            pass
-        # Fallback regex
-        sents = re.split(r'(?<=[.!?])\s+', text)
-        return [s.strip() for s in sents if s.strip()]
+            except Exception:
+                pass
+
+        # Regex fallback
+        parts = re.split(r'(?<=[.!?])\s+', text)
+        return [s.strip() for s in parts if s.strip()]
 
     # -----------------------------
-    # Chunk text into overlapping segments
+    # Text Chunking
     # -----------------------------
     def simple_chunker(self, text: str) -> List[str]:
+        """
+        Chunk text by sentence boundaries into overlapping windows.
+
+        Returns:
+            A list of chunk strings.
+        """
         if not text:
             return []
 
@@ -160,48 +200,61 @@ class PDFTextLoader:
         chunks = []
         cur = []
         cur_len = 0
-        cs = self.chunk_size
-        ov = self.chunk_overlap
+        max_len = self.chunk_size
+        overlap = self.chunk_overlap
 
         for s in sentences:
             slen = len(s.split())
-            if cur_len + slen <= cs:
+
+            if cur_len + slen <= max_len:
                 cur.append(s)
                 cur_len += slen
-            else:
-                chunks.append(" ".join(cur).strip())
-                # Start new chunk with overlap
-                if ov > 0:
-                    tail_words = " ".join(cur).split()[-ov:]
-                    cur = [" ".join(tail_words), s]
-                    cur_len = len(" ".join(cur).split())
-                else:
-                    cur = [s]
-                    cur_len = slen
+                continue
 
+            # Emit full chunk
+            chunks.append(" ".join(cur).strip())
+
+            # Prepare next chunk start with overlap
+            if overlap > 0:
+                tail_words = " ".join(cur).split()[-overlap:]
+                cur = [" ".join(tail_words), s]
+                cur_len = len(" ".join(cur).split())
+            else:
+                cur = [s]
+                cur_len = slen
+
+        # Final chunk
         if cur:
             chunks.append(" ".join(cur).strip())
+
         return chunks
 
     # -----------------------------
-    # Load all PDFs/TXT and chunk
+    # Load and Chunk All Files
     # -----------------------------
     def load_and_chunk(self) -> Tuple[List[str], List[dict]]:
+        """
+        Load all provided files, extract text, chunk, and produce metadata.
+
+        Returns:
+            (chunks, metadatas)
+        """
         all_chunks = []
         metadatas = []
 
         for p in self.pdf_paths:
-            txt = self.extract_text(p)
-            if not txt or not txt.strip():
-                info(f"No text for {p}; skipping")
+            text = self.extract_text(p)
+            if not text or not text.strip():
+                info(f"No text extracted from {p}; skipping.")
                 continue
 
-            chunks = self.simple_chunker(txt)
-            for idx, c in enumerate(chunks):
-                all_chunks.append(c)
+            chunks = self.simple_chunker(text)
+
+            for idx, chunk in enumerate(chunks):
+                all_chunks.append(chunk)
                 metadatas.append({"source": p.name, "chunk_index": idx})
 
             info(f"Produced {len(chunks)} chunks from {p.name}")
 
-        info(f"Total chunks: {len(all_chunks)}")
+        info(f"Total chunks produced: {len(all_chunks)}")
         return all_chunks, metadatas

@@ -14,12 +14,12 @@ except ImportError:
 # Ollama CLI / HTTP Utilities
 # -----------------------------
 def has_ollama_cli() -> bool:
-    """Check if Ollama CLI is available in PATH."""
+    """Return True if the `ollama` CLI exists in PATH."""
     return shutil.which("ollama") is not None
 
 
 def check_ollama_http() -> bool:
-    """Check if Ollama HTTP endpoint is reachable."""
+    """Return True if the configured Ollama HTTP endpoint responds."""
     if requests is None:
         return False
     try:
@@ -30,67 +30,101 @@ def check_ollama_http() -> bool:
 
 
 # -----------------------------
-# Ollama client wrapper
+# Ollama local client wrapper
 # -----------------------------
 @dataclass
 class OllamaLocal:
+    """
+    Lightweight wrapper for interacting with Ollama via CLI or HTTP.
+
+    Attributes:
+        model: Model name to run (from config).
+        http_base: Base URL for the Ollama HTTP API.
+        prefer_http: Whether to try HTTP before falling back to CLI.
+    """
     model: str = CONFIG["ollama_model"]
     http_base: str = CONFIG["ollama_http"]
     prefer_http: bool = True
 
     # -----------------------------
-    # CLI-based generation
+    # CLI Generation
     # -----------------------------
     def generate_cli(self, prompt: str, max_tokens: int = CONFIG["llm_max_tokens"]) -> str:
+        """
+        Generate text using the Ollama CLI.
+
+        Raises:
+            RuntimeError: If the CLI is unavailable or execution fails.
+        """
         if not has_ollama_cli():
-            raise RuntimeError("Ollama CLI not available.")
+            raise RuntimeError("Ollama CLI is not available.")
+
         cmd = ["ollama", "run", self.model, prompt]
-        info("Running Ollama CLI...")
+        info("Running Ollama via CLI...")
         rc, out, err = run_cmd(cmd, timeout=180)
+
         if rc != 0:
             raise RuntimeError(f"Ollama CLI failed: {err.strip()[:300]}")
         return out.strip()
 
     # -----------------------------
-    # HTTP-based generation
+    # HTTP Generation
     # -----------------------------
     def generate_http(self, prompt: str, max_tokens: int = CONFIG["llm_max_tokens"]) -> str:
+        """
+        Generate text using the Ollama HTTP API.
+
+        Returns:
+            The generated string response, or empty string on failure.
+        """
         if requests is None:
-            die("requests library required for HTTP usage. Install with `pip install requests`.")
+            die("`requests` is required for HTTP mode. Install via `pip install requests`.")
+
         url = f"{self.http_base}/api/generate"
         payload = {
             "model": self.model,
             "prompt": prompt,
             "max_tokens": max_tokens,
             "stream": False,
-            "options": {"temperature": 0.2, "top_p": 0.9, "top_k": 40}  # model-specific options
+            "options": {"temperature": 0.2, "top_p": 0.9, "top_k": 40},
         }
-        info(f"Calling Ollama HTTP API at {url}...")
+
+        info(f"Calling Ollama HTTP API: {url}")
         try:
             r = requests.post(url, json=payload, timeout=180)
             r.raise_for_status()
             data = r.json()
-            # Try multiple response keys for compatibility
+
+            # Support multiple response field names across versions
             if isinstance(data, dict):
-                for key in ["response", "text"]:
+                for key in ("response", "text"):
                     if key in data:
                         return data[key]
+
             return json.dumps(data)
+
         except Exception as e:
-            warn(f"Ollama HTTP call failed: {e}")
+            warn(f"Ollama HTTP request failed: {e}")
             return ""
 
     # -----------------------------
-    # Unified generation
+    # Unified Generation
     # -----------------------------
     def generate(self, prompt: str, max_tokens: int = CONFIG["llm_max_tokens"]) -> str:
         """
-        Generate text using Ollama. Prefers HTTP if available, falls back to CLI.
+        Generate text using Ollama.
+
+        Tries HTTP first (if enabled and reachable), then falls back to CLI.
+        Dies with an error message if neither method is available.
         """
+        # Prefer HTTP if configured and responding
         if self.prefer_http and check_ollama_http():
             out = self.generate_http(prompt, max_tokens)
             if out:
                 return out
+
+        # Fallback to CLI if installed
         if has_ollama_cli():
             return self.generate_cli(prompt, max_tokens)
-        die("No Ollama endpoint available (HTTP or CLI).")
+
+        die("No available Ollama backend (HTTP or CLI).")

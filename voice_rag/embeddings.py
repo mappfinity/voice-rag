@@ -24,52 +24,65 @@ except Exception:
     chromadb = None
 
 
-# -----------------------------
-# Local embedding index + Chroma wrapper
-# -----------------------------
+# ============================================================================
+# LocalEmbeddingIndex
+# ============================================================================
+# Lightweight wrapper around SentenceTransformers + ChromaDB for:
+# - Embedding text
+# - Persisting vectors locally
+# - Efficient similarity search
+# All components initialize lazily and degrade gracefully if unavailable.
+# ============================================================================
+
 @dataclass
 class LocalEmbeddingIndex:
     embedding_model_name: str = CONFIG["embedding_model"]
     device: str = "cpu"
     chroma_dir: Path = Path(CONFIG["chroma_dir"])
+
     model: Any = None
     client: Any = None
     collection: Any = None
+
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    # -----------------------------
-    # Model Initialization
-    # -----------------------------
+    # ----------------------------------------------------------------------
+    # Embedding Model Setup
+    # ----------------------------------------------------------------------
     def init_model(self):
         if SentenceTransformer is None:
-            die("sentence-transformers required. Install `pip install sentence-transformers`.")
+            die("sentence-transformers required. Install via `pip install sentence-transformers`.")
         if self.model is None:
             info(f"Loading embedding model '{self.embedding_model_name}' on {self.device}")
             self.model = SentenceTransformer(self.embedding_model_name, device=self.device)
-            # Force CPU first device (safe fallback)
+
+            # Ensure it uses CPU explicitly when needed
             try:
                 self.model._first_device = self.device
             except Exception:
                 pass
 
-    # -----------------------------
-    # Chroma Initialization
-    # -----------------------------
+    # ----------------------------------------------------------------------
+    # ChromaDB Setup
+    # ----------------------------------------------------------------------
     def init_chroma(self):
         if chromadb is None:
-            die("chromadb required. Install `pip install chromadb`.")
+            die("chromadb required. Install via `pip install chromadb`.")
+
         if self.client is None:
             try:
                 settings = ChromaSettings(
                     chroma_db_impl="duckdb+parquet",
                     persist_directory=str(self.chroma_dir)
                 )
+                # Prefer PersistentClient (new API), fall back to generic client
                 try:
                     self.client = chromadb.PersistentClient(path=str(self.chroma_dir))
                 except Exception:
                     self.client = chromadb.Client(settings=settings)
             except Exception:
                 self.client = chromadb.Client()
+
         coll_name = "rag_documents"
         try:
             self.collection = self.client.get_collection(coll_name)
@@ -84,21 +97,23 @@ class LocalEmbeddingIndex:
             except Exception as e:
                 die(f"Could not create Chroma collection: {e}")
 
-    # -----------------------------
-    # Text Embedding
-    # -----------------------------
+    # ----------------------------------------------------------------------
+    # Encode Text to Embeddings
+    # ----------------------------------------------------------------------
     def embed_texts(self, texts: Sequence[str], batch_size: Optional[int] = None) -> np.ndarray:
         if self.model is None:
             self.init_model()
         if np is None:
-            die("numpy required for embedding arrays.")
-        batch_size = batch_size or CONFIG.get("embedding_batch_size", 32)
+            die("numpy required for embedding output.")
 
+        batch_size = batch_size or CONFIG.get("embedding_batch_size", 32)
         embeddings = []
+
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
+
             try:
-                # Try new API first
+                # Prefer normalized embeddings (new ST API)
                 try:
                     emb = self.model.encode(
                         batch,
@@ -107,38 +122,40 @@ class LocalEmbeddingIndex:
                         normalize_embeddings=True
                     )
                 except TypeError:
-                    # Older ST versions
+                    # Legacy fallback: normalize manually
                     emb = np.asarray(self.model.encode(batch, convert_to_numpy=True))
                     norms = np.linalg.norm(emb, axis=1, keepdims=True)
                     norms[norms == 0] = 1e-12
                     emb = emb / norms
+
             except Exception as e:
                 warn(f"Embedding error: {e}")
                 emb = np.zeros((len(batch), 768), dtype=np.float32)
+
             embeddings.append(emb)
+
         return np.vstack(embeddings) if embeddings else np.zeros((0, 0), dtype=np.float32)
 
-    # -----------------------------
-    # Add Texts to Chroma
-    # -----------------------------
+    # ----------------------------------------------------------------------
+    # Add Text Chunks to ChromaDB
+    # ----------------------------------------------------------------------
     def add_texts(self, texts: List[str], metadatas: Optional[List[dict]] = None, ids: Optional[List[str]] = None):
         if self.collection is None:
             self.init_chroma()
+
         ids = ids or [str(uuid.uuid4()) for _ in texts]
 
-        # Filter out existing IDs
-        existing = set()
+        # Skip IDs already present in the DB
         try:
-            res = self.collection.get(ids=ids, include=["ids"])
-            existing = set(res.get("ids", []))
+            existing = set(self.collection.get(ids=ids, include=["ids"]).get("ids", []))
         except Exception:
             existing = set()
 
         new_texts, new_ids, new_metas = [], [], []
-        for i, _id in enumerate(ids):
-            if _id not in existing:
+        for i, doc_id in enumerate(ids):
+            if doc_id not in existing:
                 new_texts.append(texts[i])
-                new_ids.append(_id)
+                new_ids.append(doc_id)
                 new_metas.append(metadatas[i] if metadatas else {})
 
         if not new_texts:
@@ -147,19 +164,27 @@ class LocalEmbeddingIndex:
 
         batch_size = CONFIG.get("embedding_batch_size", 32)
         for i in range(0, len(new_texts), batch_size):
-            b_texts = new_texts[i:i + batch_size]
-            b_ids = new_ids[i:i + batch_size]
-            b_metas = new_metas[i:i + batch_size]
-            b_emb = self.embed_texts(b_texts, batch_size=batch_size)
+            batch_t = new_texts[i:i + batch_size]
+            batch_ids = new_ids[i:i + batch_size]
+            batch_meta = new_metas[i:i + batch_size]
+
+            batch_emb = self.embed_texts(batch_t, batch_size=batch_size)
+
             try:
-                self.collection.add(ids=b_ids, documents=b_texts, metadatas=b_metas, embeddings=b_emb.tolist())
+                self.collection.add(
+                    ids=batch_ids,
+                    documents=batch_t,
+                    metadatas=batch_meta,
+                    embeddings=batch_emb.tolist()
+                )
             except Exception as e:
                 warn(f"Chroma add failed for batch: {e}")
+
         info("Indexing complete.")
 
-    # -----------------------------
-    # Query Chroma
-    # -----------------------------
+    # ----------------------------------------------------------------------
+    # Query Similar Documents
+    # ----------------------------------------------------------------------
     def query(self, text: str, top_k: int = 4) -> List[Tuple[str, dict, float]]:
         if self.collection is None:
             self.init_chroma()
@@ -180,15 +205,18 @@ class LocalEmbeddingIndex:
             return []
 
         out = []
-        if results.get("documents"):
-            docs = results["documents"][0]
-            metas = results.get("metadatas", [[]])[0]
-            dists = results.get("distances", [[]])[0]
-            for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
-                meta = meta or {}
-                meta.setdefault("id", f"{meta.get('source','?')}_{meta.get('chunk_index', i)}")
-                out.append((doc, meta, float(dist)))
+        docs = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        dists = results.get("distances", [[]])[0]
 
-        # Sort descending similarity
+        for i, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
+            meta = meta or {}
+            meta.setdefault(
+                "id",
+                f"{meta.get('source','?')}_{meta.get('chunk_index', i)}"
+            )
+            out.append((doc, meta, float(dist)))
+
+        # Sort by similarity (higher distance → more similar in Chroma cosine)
         out_sorted = sorted(out, key=lambda x: -x[2])
         return out_sorted[:min(top_k, len(out_sorted))]

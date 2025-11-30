@@ -15,9 +15,26 @@ except Exception:
     wavfile = None
 
 
+# ---------------------------------------------------------------------------
+# Utility: format retrieved documents for display
+# ---------------------------------------------------------------------------
 def _format_retrieved_for_display(retrieved: List[Tuple[str, dict, float]]) -> str:
+    """
+    Format retrieved context documents for UI display.
+
+    Parameters
+    ----------
+    retrieved : List[Tuple[str, dict, float]]
+        List of tuples (document_text, metadata, distance_score).
+
+    Returns
+    -------
+    str
+        Formatted string for Gradio textbox.
+    """
     if not retrieved:
         return "No context retrieved."
+
     lines = []
     for i, (doc, meta, dist) in enumerate(retrieved):
         src = meta.get("source", "unknown")
@@ -26,15 +43,33 @@ def _format_retrieved_for_display(retrieved: List[Tuple[str, dict, float]]) -> s
     return "\n\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Build Gradio App
+# ---------------------------------------------------------------------------
 def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimized CPU)") -> Any:
+    """
+    Create a Gradio interface for Local Voice-RAG with text and voice chat tabs.
+
+    Parameters
+    ----------
+    agent : LocalRAGAgent
+        The LocalRAGAgent instance.
+    title : str
+        Window title.
+
+    Returns
+    -------
+    Any
+        Gradio Blocks app instance.
+    """
     if gr is None:
         die("Gradio not installed. Install with `pip install gradio`.")
 
     chat_history: List[Dict[str, str]] = []
 
-    # -----------------------------
-    # Handle text input
-    # -----------------------------
+    # -----------------------------------------------------------------------
+    # Handle text submission
+    # -----------------------------------------------------------------------
     def handle_text_submit(user_text: str, tts_enabled: bool, top_k: int):
         nonlocal chat_history
         user_text = (user_text or "").strip()
@@ -57,13 +92,12 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
             {"role": "user", "content": user_text},
             {"role": "assistant", "content": answer}
         ])
-        chat_history = chat_history[-40:]  # keep history manageable
+        chat_history = chat_history[-40:]
         return chat_history, contexts_display, audio_file, ""
 
-
-    # -----------------------------
-    # Handle voice input
-    # -----------------------------
+    # -----------------------------------------------------------------------
+    # Handle voice submission
+    # -----------------------------------------------------------------------
     def handle_voice_submit(audio_in, tts_enabled: bool, top_k: int):
         nonlocal chat_history
         if not audio_in:
@@ -71,14 +105,17 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
 
         tmp_path: str = ""
         try:
-            # Gradio audio input can be filepath or (sr, array)
+            # Gradio audio input: filepath or (sr, array)
             if isinstance(audio_in, str) and os.path.exists(audio_in):
                 tmp_path = audio_in
             elif isinstance(audio_in, (tuple, list)) and len(audio_in) == 2:
                 sr, arr = audio_in
                 import numpy as np
                 arr_np = np.asarray(arr)
-                arr_int16 = (np.clip(arr_np, -1.0, 1.0) * 32767).astype(np.int16) if arr_np.dtype.kind == 'f' else arr_np.astype(np.int16)
+                arr_int16 = (
+                    (np.clip(arr_np, -1.0, 1.0) * 32767).astype(np.int16)
+                    if arr_np.dtype.kind == 'f' else arr_np.astype(np.int16)
+                )
                 tmp_path = f"gr_audio_{int(time.time())}.wav"
                 wavfile.write(tmp_path, int(sr), arr_int16)
             else:
@@ -107,21 +144,21 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
             chat_history = chat_history[-40:]
             return chat_history, contexts_display, audio_file, ""
         finally:
+            # Cleanup temporary file
             try:
                 if tmp_path and tmp_path.startswith("gr_audio_") and os.path.exists(tmp_path):
                     os.remove(tmp_path)
             except Exception:
                 pass
 
-
-    # -----------------------------
-    # Build Gradio UI
-    # -----------------------------
+    # -----------------------------------------------------------------------
+    # Build UI layout
+    # -----------------------------------------------------------------------
     with gr.Blocks(title=title) as demo:
         gr.Markdown("## Local Voice-RAG — Optimized for CPU (Python 3.11)")
 
         with gr.Tabs():
-            # Text Chat Tab
+            # ---------------- Text Chat Tab ----------------
             with gr.Tab("Text Chat"):
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -129,7 +166,7 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                         txt_input = gr.Textbox(label="Your question", placeholder="Ask something...", lines=2)
                         with gr.Row():
                             tts_toggle = gr.Checkbox(label="Enable TTS", value=False)
-                            topk_slider = gr.Slider(minimum=1, maximum=CONFIG.get("max_retrieval_topk",8), step=1, value=4, label="Retrieval top_k")
+                            topk_slider = gr.Slider(minimum=1, maximum=CONFIG.get("max_retrieval_topk", 8), step=1, value=4, label="Retrieval top_k")
                             send_btn = gr.Button("Send")
                     with gr.Column(scale=2):
                         contexts_box = gr.Textbox(label="Retrieved Contexts", interactive=False, lines=20)
@@ -143,7 +180,7 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                                  inputs=[txt_input, tts_toggle, topk_slider],
                                  outputs=[chat, contexts_box, audio_out, status])
 
-            # Voice Chat Tab
+            # ---------------- Voice Chat Tab ----------------
             with gr.Tab("Voice Chat"):
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -152,7 +189,7 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                         audio_input = gr.Audio(label="Record or upload audio", type="filepath", interactive=True)
                         with gr.Row():
                             v_tts_toggle = gr.Checkbox(label="Enable TTS", value=True)
-                            v_topk = gr.Slider(minimum=1, maximum=CONFIG.get("max_retrieval_topk",8), step=1, value=4, label="Retrieval top_k")
+                            v_topk = gr.Slider(minimum=1, maximum=CONFIG.get("max_retrieval_topk", 8), step=1, value=4, label="Retrieval top_k")
                             v_send = gr.Button("Process Audio")
                     with gr.Column(scale=2):
                         v_contexts = gr.Textbox(label="Retrieved Contexts", interactive=False, lines=20)
@@ -171,7 +208,20 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
     return demo
 
 
+# ---------------------------------------------------------------------------
+# Launch Gradio App
+# ---------------------------------------------------------------------------
 def launch_gradio_app(agent: Any, ui_title: str = "Local Voice-RAG (CPU)") -> None:
+    """
+    Launch the Gradio app with proper asyncio policy on Windows.
+
+    Parameters
+    ----------
+    agent : Any
+        The LocalRAGAgent instance.
+    ui_title : str
+        Window title.
+    """
     import asyncio, sys
     if sys.platform.startswith("win"):
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

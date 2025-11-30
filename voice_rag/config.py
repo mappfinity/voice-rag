@@ -1,12 +1,10 @@
 from pathlib import Path
 from typing import Any, Dict
 
-
 # ============================================================================
 # Configuration Dictionary
 # ============================================================================
-# All default settings for models, paths, audio, retrieval, and generation.
-# This file is intentionally lightweight, but validated and robust.
+# Default settings for models, paths, audio, retrieval, and generation.
 # ============================================================================
 
 CONFIG: Dict[str, Any] = {
@@ -14,7 +12,7 @@ CONFIG: Dict[str, Any] = {
     # Whisper STT
     # --------------------------
     "whisper_model": "small",
-    "whisper_compute_type": "int8",     # CPU-friendly quantization
+    "whisper_compute_type": "int8",     # Lightweight CPU quantization
     "whisper_beam_size": 1,
     "whisper_language": "en",
     "whisper_temperature": (0.0, 0.2, 0.4),
@@ -38,10 +36,10 @@ CONFIG: Dict[str, Any] = {
     # --------------------------
     # TTS
     # --------------------------
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch",  # "tts_models/fr/css10/vits"
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch",
 
     # --------------------------
-    # Microphone / Audio Recording
+    # Microphone Recording
     # --------------------------
     "record_seconds_default": 10,
     "sample_rate": 16000,
@@ -68,20 +66,21 @@ CONFIG: Dict[str, Any] = {
     "initial_retrieval_k": 16,
 
     # --------------------------
-    # Prompt Input Size Control
+    # Prompt Size Control
     # --------------------------
     "context_chunk_preview_chars": 1024,
 }
 
-
 # ============================================================================
-# Directory Initialization (robust)
+# Directory Initialization
+# ============================================================================
+# Ensures configured directories exist and resolves user paths safely.
 # ============================================================================
 
 def _ensure_dir(path_value: Any, key: str) -> Path:
     """
-    Convert config path to a safe Path object and ensure directory exists.
-    Provides clear warnings if invalid.
+    Convert a config path to a resolved Path object and ensure it exists.
+    Raises a clear error if initialization fails.
     """
     try:
         p = Path(path_value).expanduser().resolve()
@@ -89,10 +88,9 @@ def _ensure_dir(path_value: Any, key: str) -> Path:
         return p
     except Exception as e:
         raise RuntimeError(
-            f"Failed to initialize directory for CONFIG['{key}'] = {path_value}: {e}"
+            f"Could not initialize CONFIG['{key}'] directory ({path_value}): {e}"
         )
 
-
-# Normalize and ensure directories exist
+# Normalize directory paths
 CONFIG["chroma_dir"] = _ensure_dir(CONFIG["chroma_dir"], "chroma_dir")
 CONFIG["docs_dir"] = _ensure_dir(CONFIG["docs_dir"], "docs_dir")
