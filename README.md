@@ -1,4 +1,4 @@
-# Local Voice-RAG
+# Local Voice-RAG (Demo)
 
 Local Voice-RAG is a **CPU-optimized local Retrieval-Augmented Generation (RAG) assistant** for text and voice queries. It supports **PDF/TXT indexing**, **semantic search**, **speech-to-text (STT)**, and **text-to-speech (TTS)** — all running **fully offline**.
 
