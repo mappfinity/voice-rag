@@ -68,17 +68,17 @@ CONFIG = {
 
 ### Index all documents
 ```bash
-python main.py --reindex
+python run.py --reindex
 ```
 
 ### Index specific PDFs
 ```bash
-python main.py --pdfs doc1.pdf doc2.pdf --reindex
+python run.py --pdfs doc1.pdf doc2.pdf --reindex
 ```
 
 ### Launch UI
 ```bash
-python main.py --ui
+python run.py --ui
 ```
 
 Visit: <http://127.0.0.1:7861>
