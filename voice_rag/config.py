@@ -32,13 +32,13 @@ CONFIG: Dict[str, Any] = {
     # LLM (Ollama)
     # --------------------------
     "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5-coder:7b-instruct",
+    "ollama_model": "qwen2.5:3b",
     "llm_max_tokens": 1200,
 
     # --------------------------
     # TTS
     # --------------------------
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # "tts_models/fr/css10/vits"
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch",  # "tts_models/fr/css10/vits"
 
     # --------------------------
     # Microphone / Audio Recording
@@ -95,4 +95,4 @@ def _ensure_dir(path_value: Any, key: str) -> Path:
 
 # Normalize and ensure directories exist
 CONFIG["chroma_dir"] = _ensure_dir(CONFIG["chroma_dir"], "chroma_dir")
-CONFIG["docs_dir"]   = _ensure_dir(CONFIG["docs_dir"], "docs_dir")
+CONFIG["docs_dir"] = _ensure_dir(CONFIG["docs_dir"], "docs_dir")

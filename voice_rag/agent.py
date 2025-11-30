@@ -41,7 +41,6 @@ class LocalRAGAgent:
         "supported by the CONTEXTS.\n\n"
         "Produce clear, well-structured explanations suitable for text-to-speech. "
         "Avoid raw JSON, internal markers, or metadata.\n"
-        "Finally, you're final answer MUST always be in FRENCH.\n"
     )
 
     reranker: Optional[ReRanker] = None
@@ -115,7 +114,8 @@ class LocalRAGAgent:
         Prevents LLM runaway input size.
         """
         if max_chars_per_chunk is None:
-            max_chars_per_chunk = CONFIG.get("context_chunk_preview_chars", 1024)
+            max_chars_per_chunk = CONFIG.get(
+                "context_chunk_preview_chars", 1024)
 
         parts = []
 
