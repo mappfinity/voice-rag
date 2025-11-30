@@ -21,8 +21,8 @@ Powered by **Ollama LLM**, **Faster Whisper**, **Coqui TTS**, and **ChromaDB**.
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/local-voice-rag.git
-cd local-voice-rag
+git clone https://github.com/yourusername/voice-rag.git
+cd voice-rag
 ```
 
 ### 2. Create a Python Environment
@@ -88,21 +88,23 @@ Visit: <http://127.0.0.1:7861>
 ## Folder Structure
 
 ```
-local-voice-rag/
+voice-rag/
 ├── voice_rag/
-│   ├── agent.py
-│   ├── embeddings.py
-│   ├── ollama.py
-│   ├── stt.py
-│   ├── tts.py
-│   ├── pdf_loader.py
-│   ├── ui.py
-│   ├── cli.py
-│   ├── config.py
-│   └── utils.py
-├── main.py
+│   ├── agent.py          # Core RAG assistant logic
+│   ├── embeddings.py     # ChromaDB + embeddings
+│   ├── ollama.py         # Ollama HTTP client
+│   ├── stt.py            # Faster Whisper STT
+│   ├── tts.py            # Coqui TTS wrapper
+│   ├── pdf_loader.py     # PDF/TXT parsing & chunking
+│   ├── ui.py             # Gradio UI
+│   ├── cli.py            # Indexing CLI
+│   ├── config.py         # Config system
+│   └── utils.py          # Helper utilities
+├── run.py
 ├── requirements.txt
+├── LICENSE
 └── README.md
+
 ```
 
 ---

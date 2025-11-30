@@ -1,0 +1,30 @@
+# Core utilities
+tqdm
+numpy
+requests
+
+# PDF/Text ingestion
+pypdf
+PyMuPDF==1.24.9
+
+# NLP utilities
+nltk
+sentence-transformers
+
+# Vector database
+chromadb==0.5.3
+
+# Speech-to-text (CPU-friendly)
+faster-whisper==1.0.1
+
+# Text-to-speech (optional – Coqui TTS)
+TTS==0.22.0
+
+# Audio IO
+sounddevice
+scipy
+
+# Gradio UI
+gradio==4.44.0
+
+# If using ollama local server, no pip install required for the model backend
