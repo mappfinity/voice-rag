@@ -28,7 +28,6 @@ def main():
     # Launch UI if requested
     if args.ui:
         launch_gradio_app(agent)
-    launch_gradio_app(agent)
 
 if __name__ == "__main__":
     main()
