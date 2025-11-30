@@ -3,7 +3,7 @@ CLI entrypoint for building/launching the local Voice-RAG index and UI.
 """
 
 import argparse
-from cli import setup_index
+from voice_rag.cli import setup_index
 from voice_rag.ui import launch_gradio_app
 from voice_rag.utils import info
 
