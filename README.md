@@ -106,7 +106,15 @@ local-voice-rag/
 ```
 
 ---
+## Notes & Tips
 
+- Ensure Ollama is running and reachable via ollama_http.
+- PDF parsing works best with text-based PDFs (OCR required for scans).
+- Chroma DB stores embeddings locally in voice_rag/chroma_db.
+- TTS requires sounddevice and scipy installed.
+- STT/TTS models can be swapped in config.py.
+
+---
 ## Troubleshooting
 
 - Gradio won’t launch → Check port 7861  
