@@ -94,19 +94,20 @@ All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
-    "whisper_model": "small",                           # Whisper ASR model size; 'small' offers fast and efficient transcription
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Coqui TTS model for fast English speech synthesis
-    "embedding_model": "voice_rag/bge-small-en",        # Voice embedding model for speaker recognition or retrieval
-    "chroma_dir": "voice_rag/chroma_db",                # Directory to store Chroma vector database
-    "docs_dir": "voice_rag/docs",                       # Directory containing documents for embedding/retrieval
-    "ollama_http": "http://localhost:11434",            # Local Ollama API endpoint
-    "ollama_model": "qwen2.5:3b",                       # Ollama language model to use for queries
-    "record_seconds_default": 10,                       # Default recording length in seconds
-    "sample_rate": 16000,                               # Audio sample rate for recording
-    "mic_device_id": None,                              # Microphone device ID; None means default mic
-    "mic_channels": 1,                                  # Number of audio channels to record (mono = 1)
-    "output_dir": "output"                              # Directory to save generated outputs
+    "whisper_model": "small",                           # Whisper ASR model; small is fast and resource-efficient
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Coqui TTS model optimized for quick, natural English speech
+    "embedding_model": "voice_rag/bge-small-en",        # Voice embedding model for robust speaker representation
+    "chroma_dir": "voice_rag/chroma_db",                # Directory for storing Chroma vector database
+    "docs_dir": "voice_rag/docs",                       # Directory containing reference documents for embeddings
+    "ollama_http": "http://localhost:11434",            # Local Ollama API endpoint for model queries
+    "ollama_model": "qwen2.5:3b",                       # Light Ollama language model used for text generation
+    "record_seconds_default": 10,                       # Default audio recording duration in seconds
+    "sample_rate": 16000,                               # Audio sample rate for recordings
+    "mic_device_id": None,                              # Microphone device ID; None selects the default device
+    "mic_channels": 1,                                  # Number of audio channels (1 = mono)
+    "output_dir": "output"                              # Directory for saving generated files
 }
+
 
 ```
 
