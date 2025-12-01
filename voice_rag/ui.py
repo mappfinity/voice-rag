@@ -7,16 +7,18 @@ clear boundaries, and robust error handling aligned with 2025 ML
 tooling standards.
 """
 
+
 from typing import Any, List, Dict
 import os
 import time
 import uuid
 from pathlib import Path
 
-from .config import CONFIG
-from .utils import die, warn
+from voice_rag.config import CONFIG
+from voice_rag.utils import die, warn
 from voice_rag.agent import LocalRAGAgent
-from .history import ChatHistory
+from voice_rag.history import ChatHistory
+
 
 history = ChatHistory()
 
@@ -78,6 +80,8 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
 
     Returns:
         gr.Blocks: The composed Gradio interface.
+        :param agent:
+        :param title:
     """
     if gr is None:
         die("Gradio not installed. Install with `pip install gradio`.")
@@ -329,4 +333,5 @@ def launch_gradio_app(agent: Any, ui_title: str = "Local Voice-RAG (CPU)") -> No
         die("Gradio not installed.")
 
     app = build_gradio_app(agent, title=ui_title)
-    app.launch(share=False, server_name="127.0.0.1", server_port=7861)
+
+    app.launch(share=False, server_name="127.0.0.1", server_port=7863)
