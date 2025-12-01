@@ -4,7 +4,6 @@ from typing import List, Tuple, Optional
 from .utils import info, warn, die
 from .config import CONFIG
 import re
-import os
 
 # Optional libraries
 try:
