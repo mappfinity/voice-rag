@@ -94,19 +94,20 @@ All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
-    "whisper_model": "small",
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch",
-    "embedding_model": "voice_rag/bge-small-en",
-    "chroma_dir": "voice_rag/chroma_db",
-    "docs_dir": "voice_rag/docs",
-    "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5:3b",
-    "record_seconds_default": 10,
-    "sample_rate": 16000,
-    "mic_device_id": None,
-    "mic_channels": 1,
-    "output_dir": "output"
+    "whisper_model": "small",                           # Whisper ASR model size; 'small' is faster, less accurate than larger models
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Coqui TTS model for fast English speech synthesis
+    "embedding_model": "voice_rag/bge-small-en",        # Voice embedding model for speaker recognition or retrieval
+    "chroma_dir": "voice_rag/chroma_db",                # Directory to store Chroma vector database
+    "docs_dir": "voice_rag/docs",                       # Directory containing documents for embedding/retrieval
+    "ollama_http": "http://localhost:11434",            # Local Ollama API endpoint
+    "ollama_model": "qwen2.5:3b",                       # Ollama language model to use for queries
+    "record_seconds_default": 10,                       # Default recording length in seconds
+    "sample_rate": 16000,                               # Audio sample rate for recording
+    "mic_device_id": None,                              # Microphone device ID; None means default mic
+    "mic_channels": 1,                                  # Number of audio channels to record (mono = 1)
+    "output_dir": "output"                              # Directory to save generated outputs
 }
+
 ```
 
 ---
