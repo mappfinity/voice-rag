@@ -1,50 +1,96 @@
-# Local Voice-RAG (Demo)
+# Local Voice-RAG
 
-Local Voice-RAG is a **CPU-optimized local Retrieval-Augmented Generation (RAG) assistant** for text and voice queries. It supports **PDF/TXT indexing**, **semantic search**, **speech-to-text (STT)**, and **text-to-speech (TTS)** — all running **fully offline**.
+Local Voice-RAG is a **fully offline Retrieval-Augmented Generation (RAG) assistant** optimized for CPU. It supports:
 
-Powered by **Ollama LLM**, **Faster Whisper**, **Coqui TTS**, and **ChromaDB**.
+- **Text & voice queries**
+- **PDF/TXT indexing**
+- **Semantic search**
+- **Speech-to-Text (STT)**
+- **Text-to-Speech (TTS)**
+- **Interactive CLI & Gradio UI**
+
+Powered by:
+
+- **Ollama** (LLM)
+- **Faster-Whisper** (STT)
+- **Coqui TTS**
+- **ChromaDB** (vector store)
 
 ---
 
 ## Features
 
-- **Text & Voice Queries**
-- **PDF/TXT Document Indexing**
-- **Retrieval-Augmented Generation (RAG)**
-- **Local TTS & STT**
-- **CPU‑Optimized**
-- **Gradio UI**
+### Core
+
+- Offline **PDF/TXT ingestion** with chunking
+- Local **embedding generation** for semantic search
+- **RAG-augmented answers** using local LLM
+- **TTS & STT support**
+- **CPU-optimized** Gradio UI
+- Full **chat history** storage and export
+
+### New
+
+- Interactive **CLI REPL**
+    - Multiline input (`:ml` or `Ctrl+J`)
+    - Audio recording (`record` or `Ctrl+R`)
+    - TTS toggle (`speakon` / `speakoff`)
+    - File-based audio queries (`file <wav|mp3>`)
+- **Incremental indexing**: only index new documents
+- **Hybrid UI + CLI mode**
 
 ---
 
 ## Installation
 
-### 1. Clone the Repository
+### 1. Clone the repository
+
 ```bash
 git clone https://github.com/yourusername/voice-rag.git
 cd voice-rag
 ```
 
-### 2. Create a Python Environment
+### 2. Create Python environment
+
+**Recommended (Conda)**
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate   # Windows
+conda create -n voicerag python=3.10 -y
+conda activate voicerag
 ```
 
-### 3. Install Dependencies
+**Or Python venv**
+
+```bash
+python -m venv venv
+source venv/bin/activate     # Linux/macOS
+venv\Scripts\activate       # Windows
+```
+
+### 3. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-Optional:
+Optional (if not included in `requirements.txt`):
+
 ```bash
-pip install faster-whisper sentence-transformers chromadb TTS pypdf pymupdf gradio
+pip install faster-whisper chromadb sentence-transformers TTS pypdf pymupdf gradio
+```
+
+Ensure **Ollama** is installed and running:
+
+```bash
+ollama serve
+ollama pull qwen2.5:3b
 ```
 
 ---
 
 ## Configuration
+
+All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
@@ -59,6 +105,7 @@ CONFIG = {
     "sample_rate": 16000,
     "mic_device_id": None,
     "mic_channels": 1,
+    "output_dir": "output"
 }
 ```
 
@@ -66,22 +113,78 @@ CONFIG = {
 
 ## Usage
 
-### Index all documents
+Run the main entrypoint:
+
+```bash
+python run.py [options]
+```
+
+### 1. Build or rebuild index
+
 ```bash
 python run.py --reindex
 ```
 
-### Index specific PDFs
+### 2. Index specific PDFs
+
 ```bash
 python run.py --pdfs doc1.pdf doc2.pdf --reindex
 ```
 
-### Launch UI
+### 3. Launch Gradio UI
+
 ```bash
 python run.py --ui
 ```
+Visit: [http://127.0.0.1:7861](http://127.0.0.1:7861)
 
-Visit: <http://127.0.0.1:7861>
+### 4. Interactive CLI Chat
+
+```bash
+python run.py --chat
+```
+
+#### Commands
+
+| Command | Description |
+|---------|-------------|
+| `record` | Record audio → STT → RAG → LLM |
+| `file <path>` | Use an audio file as query |
+| `speakon` / `speakoff` | Enable/disable TTS |
+| `:ml` | Multiline input |
+| `exit` / `quit` | Exit REPL |
+
+#### Hotkeys
+
+| Hotkey | Action |
+|--------|--------|
+| Ctrl+J | Multiline query |
+| Ctrl+R | Record audio |
+
+### 5. Hybrid Mode (UI + CLI)
+
+```bash
+python run.py --ui --chat
+```
+Allows interacting with both **UI** and **CLI** simultaneously.
+
+---
+
+## Chat History
+
+- Stored in `output/chat_history.json`
+- Each entry contains:
+    - User text or STT transcript
+    - Assistant response
+    - RAG source snippets (top-k)
+    - TTS audio output path
+    - Timestamp
+
+Export plaintext history:
+
+```bash
+python -m voice_rag.history.export_txt
+```
 
 ---
 
@@ -89,45 +192,56 @@ Visit: <http://127.0.0.1:7861>
 
 ```
 voice-rag/
-├── voice_rag/
-│   ├── agent.py          # Core RAG assistant logic
-│   ├── embeddings.py     # ChromaDB + embeddings
-│   ├── ollama.py         # Ollama HTTP client
-│   ├── stt.py            # Faster Whisper STT
-│   ├── tts.py            # Coqui TTS wrapper
-│   ├── pdf_loader.py     # PDF/TXT parsing & chunking
-│   ├── ui.py             # Gradio UI
-│   ├── cli.py            # Indexing CLI
-│   ├── config.py         # Config system
-│   └── utils.py          # Helper utilities
-├── run.py
+├── run.py                     # Main launcher
 ├── requirements.txt
 ├── LICENSE
-└── README.md
-
+├── README.md
+└── voice_rag/
+    ├── agent.py               # Core RAG agent
+    ├── agent_helpers.py       # Audio recording & utilities
+    ├── cli.py                 # CLI + hotkeys + interactive REPL
+    ├── config.py              # Config + directory setup
+    ├── embeddings.py          # ChromaDB + embeddings
+    ├── history.py             # Chat history storage/export
+    ├── hotkeys.py             # Hotkey manager
+    ├── pdf_loader.py          # PDF/TXT parsing & chunking
+    ├── reranker.py            # Optional reranking
+    ├── stt.py                 # Faster Whisper STT wrapper
+    ├── tts.py                 # Coqui TTS wrapper
+    ├── ui.py                  # Gradio UI
+    └── utils.py               # Logging & helpers
 ```
 
 ---
+
 ## Notes & Tips
 
-- Ensure Ollama is running and reachable via ollama_http.
-- PDF parsing works best with text-based PDFs (OCR required for scans).
-- Chroma DB stores embeddings locally in voice_rag/chroma_db.
-- TTS requires sounddevice and scipy installed.
-- STT/TTS models can be swapped in config.py.
+- **Large PDFs** may take longer to embed on CPU
+- **Incremental indexing** prevents re-processing already-indexed documents
+- **Audio device selection** configurable in `config.py`
+- **Scanned PDFs** require OCR preprocessing
 
 ---
+
 ## Troubleshooting
 
-- Gradio won’t launch → Check port 7861  
-- STT errors → Verify Faster Whisper + microphone  
-- TTS fails → Check audio output  
-- ChromaDB errors → Delete `chroma_db` and reindex  
+| Issue | Solution |
+|-------|---------|
+| Gradio UI not loading | Check port 7861 availability |
+| STT errors | Verify microphone and Faster Whisper installation |
+| TTS errors | Check audio output device & Coqui TTS installation |
+| ChromaDB issues | Delete `voice_rag/chroma_db` and reindex |
 
 ---
 
 ## License
-MIT License.
+
+MIT License
+
+---
 
 ## Contributing
-Open issues and PRs welcome!
+
+- PRs and issues are welcome
+- Suggest new features or optimizations
+- Maintain consistent style & doc
