@@ -6,46 +6,8 @@ and running an interactive chat loop. Follows standard 2025 ML
 tooling conventions: minimal side effects, clear docstrings,
 and explicit threading for background UI.
 """
-# ===============================================
-# Environment & Telemetry Configuration
-# ===============================================
+
 from __future__ import annotations
-
-import os
-
-# Hugging Face
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-
-# Gradio
-os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
-
-# ChromaDB
-os.environ["CHROMA_TELEMETRY_DISABLED"] = "1"
-
-# Generic PostHog client disable
-os.environ["POSTHOG_DISABLED"] = "1"
-
-# Completely disable PostHog client if installed
-try:
-    import posthog
-
-    class NoOpPostHog:
-        def __getattr__(self, name):
-            def noop(*args, **kwargs):
-                return None
-            return noop
-
-    posthog.Posthog = NoOpPostHog()
-    posthog.capture = lambda *a, **k: None
-    posthog.identify = lambda *a, **k: None
-    posthog.flush = lambda *a, **k: None
-
-    print("PostHog telemetry: BLOCKED")
-except ImportError:
-    print("posthog package not installed — nothing to block.")
-
 # ===============================================
 # Warnings
 # ===============================================
@@ -70,82 +32,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("optimized_rag")
-
-# ===============================================
-# Optional / Third-Party Imports
-# ===============================================
-# NLTK
-try:
-    import nltk
-    # nltk.download("punkt", quiet=True)
-    from nltk.tokenize import sent_tokenize
-    HAS_NLTK_SENT = True
-except Exception:
-    HAS_NLTK_SENT = False
-
-# Numerical and HTTP libraries
-try:
-    import numpy as np
-except Exception:
-    np = None
-
-try:
-    import requests
-except Exception:
-    requests = None
-
-# ChromaDB
-try:
-    import chromadb
-    from chromadb.config import Settings as ChromaSettings
-except Exception:
-    chromadb = None
-
-# NLP / Embeddings
-try:
-    from sentence_transformers import SentenceTransformer
-except Exception:
-    SentenceTransformer = None
-
-# PDF / Document processing
-try:
-    from pypdf import PdfReader
-except Exception:
-    PdfReader = None
-
-try:
-    import fitz  # PyMuPDF
-    HAS_FITZ = True
-except Exception:
-    fitz = None
-    HAS_FITZ = False
-
-# Whisper / TTS / Audio
-try:
-    from faster_whisper import WhisperModel
-except Exception:
-    WhisperModel = None
-
-try:
-    from TTS.api import TTS
-except Exception:
-    TTS = None
-
-try:
-    import sounddevice as sd
-except Exception:
-    sd = None
-
-try:
-    from scipy.io import wavfile
-except Exception:
-    wavfile = None
-
-# Gradio
-try:
-    import gradio as gr
-except Exception:
-    gr = None
 
 # ===============================================
 # Application-Specific Imports
