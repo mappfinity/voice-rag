@@ -7,7 +7,7 @@ readable records.
 """
 
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import List, Dict, Any, Optional
 
@@ -106,10 +106,10 @@ class ChatHistory:
         # Construct entry
         entry = {
             "role": "interaction",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "user": user_prompt,
             "bot": bot_response,
-            "rag_sources": condensed,
+            #"rag_sources": condensed,
             "voice_output_path": voice_rel,
         }
 

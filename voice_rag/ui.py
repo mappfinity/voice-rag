@@ -7,7 +7,6 @@ clear boundaries, and robust error handling aligned with 2025 ML
 tooling standards.
 """
 
-
 from typing import Any, List, Dict
 import os
 import time
@@ -18,7 +17,6 @@ from voice_rag.config import CONFIG
 from voice_rag.utils import die, warn
 from voice_rag.agent import LocalRAGAgent
 from voice_rag.history import ChatHistory
-
 
 history = ChatHistory()
 
@@ -32,21 +30,12 @@ try:
 except Exception:
     wavfile = None
 
-
 # ---------------------------------------------------------------------------
-# Formatting
+# Helper Functions
 # ---------------------------------------------------------------------------
 
 def _format_retrieved_for_display(retrieved: list) -> str:
-    """
-    Produce a short, human-readable snippet list of retrieved docs.
-
-    Args:
-        retrieved (list): RAG retrieval tuples (doc, metadata, score).
-
-    Returns:
-        str: Rendered list for display.
-    """
+    """Produce a short, human-readable snippet list of retrieved docs."""
     if not retrieved:
         return "No context retrieved."
 
@@ -64,6 +53,18 @@ def _format_retrieved_for_display(retrieved: list) -> str:
         lines.append(f"[{i}] source={src} | dist={dist:.4f}\n{snippet}...")
     return "\n\n".join(lines)
 
+def safe_relative_path(file_path: str) -> str:
+    """
+    Returns a path relative to the current working directory if possible,
+    otherwise returns the absolute path.
+    """
+    if not file_path:
+        return None
+    p = Path(file_path).resolve()
+    try:
+        return str(p.relative_to(Path.cwd()))
+    except ValueError:
+        return str(p)
 
 # ---------------------------------------------------------------------------
 # Gradio App Builder
@@ -73,33 +74,22 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
     """
     Construct the complete Gradio UI: text chat, voice chat, and
     retrieval debug panes.
-
-    Args:
-        agent (LocalRAGAgent): The RAG agent instance.
-        title (str): Title of the Gradio app.
-
-    Returns:
-        gr.Blocks: The composed Gradio interface.
-        :param agent:
-        :param title:
     """
     if gr is None:
         die("Gradio not installed. Install with `pip install gradio`.")
 
     chat_history: List[Dict[str, str]] = []
 
-    OUTPUT_DIR = "output"
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    CHAT_HISTORY_FILE = os.path.join(OUTPUT_DIR, "chat_history.json")
+    OUTPUT_DIR = Path(CONFIG.get("output_dir", "output"))
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    CHAT_HISTORY_FILE = OUTPUT_DIR / "chat_history.json"
 
     # ---------------- TEXT HANDLER ----------------
 
     def handle_text_submit(user_text: str, tts_enabled: bool, top_k: int):
         """
         Handle text input: run RAG, update chat, optionally run TTS.
-
-        Returns:
-            tuple: (chat, contexts, audio_path, status_str)
+        Returns: tuple(chat, contexts, audio_path, status_str)
         """
         nonlocal chat_history
         user_text = (user_text or "").strip()
@@ -114,8 +104,8 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
             try:
                 safe_text = agent.clean_for_tts(answer)
                 fname = f"tts_{int(time.time())}.wav"
-                fpath = os.path.join(OUTPUT_DIR, fname)
-                agent.tts.speak_to_file(safe_text, fpath)
+                fpath = OUTPUT_DIR / fname
+                agent.tts.speak_to_file(safe_text, str(fpath))
                 voice_file = fpath
             except Exception as e:
                 warn(f"TTS generation failed: {e}")
@@ -136,14 +126,14 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
         except Exception as e:
             warn(f"Failed to save chat history: {e}")
 
-        # Log globally
-        voice_path = str(Path(voice_file).relative_to(Path.cwd())) if voice_file else None
+        voice_path = safe_relative_path(str(voice_file) if voice_file else None)
         history.add_interaction(
             user_text, answer, rag_sources=rag_sources,
             voice_output_path=voice_path
         )
 
-        return chat_history, contexts_str, voice_file, ""
+        return chat_history, contexts_str, str(Path(voice_file).resolve()) if voice_file else None, ""
+
 
     # ---------------- VOICE HANDLER ----------------
 
@@ -185,7 +175,7 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                 try:
                     safe_text = agent.clean_for_tts(answer)
                     fname = f"tts_{uuid.uuid4().hex}.wav"
-                    voice_file = Path(CONFIG["output_dir"]) / fname
+                    voice_file = OUTPUT_DIR / fname
                     agent.tts.speak_to_file(safe_text, str(voice_file))
                 except Exception as e:
                     warn(f"TTS generation failed: {e}")
@@ -199,16 +189,14 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
             ])
             chat_history = chat_history[-40:]
 
-            voice_path = (
-                str(Path(voice_file).relative_to(Path.cwd()))
-                if voice_file else None
-            )
+            voice_path = safe_relative_path(str(voice_file) if voice_file else None)
             history.add_interaction(
                 transcription, answer, rag_sources=rag_sources,
                 voice_output_path=voice_path
             )
 
-            return chat_history, contexts_str, voice_file, ""
+            return chat_history, contexts_str, str(Path(voice_file).resolve()) if voice_file else None, ""
+
 
         finally:
             if tmp_path.startswith("gr_audio_") and os.path.exists(tmp_path):
@@ -313,15 +301,14 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
 
     return demo
 
+# ---------------------------------------------------------------------------
+# App Launcher
+# ---------------------------------------------------------------------------
 
 def launch_gradio_app(agent: Any, ui_title: str = "Local Voice-RAG (CPU)") -> None:
     """
     Launch the Gradio app, handling required event-loop settings
     on Windows.
-
-    Args:
-        agent: Voice-RAG agent instance.
-        ui_title (str): Window title.
     """
     import asyncio
     import sys
@@ -334,4 +321,4 @@ def launch_gradio_app(agent: Any, ui_title: str = "Local Voice-RAG (CPU)") -> No
 
     app = build_gradio_app(agent, title=ui_title)
 
-    app.launch(share=False, server_name="127.0.0.1", server_port=7863)
+    app.launch(share=False, server_name="127.0.0.1", server_port=7861)

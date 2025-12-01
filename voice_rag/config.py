@@ -30,7 +30,7 @@ CONFIG: Dict[str, Any] = {
     # LLM (Ollama)
     # --------------------------
     "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5:3b",
+    "ollama_model": "qwen2.5:7b", # "qwen2.5:3b",
     "llm_max_tokens": 1200,
 
     # --------------------------
@@ -41,7 +41,7 @@ CONFIG: Dict[str, Any] = {
     # --------------------------
     # Recording
     # --------------------------
-    "record_seconds_default": 10,
+    "record_seconds_default": 15,
     "sample_rate": 16000,
     "mic_device_id": None,
     "mic_channels": 1,

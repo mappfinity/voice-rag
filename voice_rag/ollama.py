@@ -61,7 +61,7 @@ class OllamaLocal:
 
         cmd = ["ollama", "run", self.model, prompt]
         info("Running Ollama via CLI...")
-        rc, out, err = run_cmd(cmd, timeout=180)
+        rc, out, err = run_cmd(cmd, timeout=320)
 
         if rc != 0:
             raise RuntimeError(f"Ollama CLI failed: {err.strip()[:300]}")
@@ -91,7 +91,7 @@ class OllamaLocal:
 
         info(f"Calling Ollama HTTP API: {url}")
         try:
-            r = requests.post(url, json=payload, timeout=180)
+            r = requests.post(url, json=payload, timeout=320)
             r.raise_for_status()
             data = r.json()
 

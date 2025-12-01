@@ -42,13 +42,22 @@ class LocalRAGAgent:
     # (user_prompt, bot_response)
     history: List[Tuple[str, str]] = field(default_factory=list)
 
+    # system_prompt: str = (
+    #     "You are a reliable, detail-oriented assistant.\n"
+    #     "Analyze provided CONTEXTS as the primary source of truth.\n"
+    #     "Synthesize relevant content concisely and avoid speculation.\n"
+    #     "Produce clean, structured text suitable for TTS.\n"
+    # )
     system_prompt: str = (
-        "You are a reliable, detail-oriented assistant.\n"
-        "Analyze provided CONTEXTS as the primary source of truth.\n"
-        "Synthesize relevant content concisely and avoid speculation.\n"
-        "Produce clean, structured text suitable for TTS.\n"
+        "You are an intelligent, methodical reasoning assistant with access to retrieved context.\n"
+        "Treat the provided CONTEXTS as authoritative and the primary source of truth.\n"
+        "Analyze, synthesize, and connect information across multiple CONTEXTS to produce coherent insights.\n"
+        "You may infer or deduce conclusions, but avoid speculation beyond the evidence provided.\n"
+        "Break complex information into structured, clear, and concise outputs.\n"
+        "If multiple interpretations exist, present them with reasoning for each.\n"
+        "Always cite or reference the relevant CONTEXTS in your conclusions.\n"
+        "Produce output that is suitable for further processing, summarization, or TTS."
     )
-
     def __post_init__(self):
         """Initialize a default reranker if none was provided."""
         if self.reranker is None:
