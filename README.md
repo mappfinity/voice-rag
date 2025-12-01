@@ -94,7 +94,7 @@ All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
-    "whisper_model": "small",                           # Whisper ASR model size; 'small' is faster, less accurate than larger models
+    "whisper_model": "small",                           # Whisper ASR model size; 'small' offers fast and efficient transcription
     "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Coqui TTS model for fast English speech synthesis
     "embedding_model": "voice_rag/bge-small-en",        # Voice embedding model for speaker recognition or retrieval
     "chroma_dir": "voice_rag/chroma_db",                # Directory to store Chroma vector database
