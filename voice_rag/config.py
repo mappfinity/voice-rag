@@ -1,18 +1,18 @@
 from pathlib import Path
 from typing import Any, Dict
 
-# ============================================================================
-# Configuration Dictionary
-# ============================================================================
-# Default settings for models, paths, audio, retrieval, and generation.
-# ============================================================================
-
+# =============================================================================
+# Global Configuration
+# =============================================================================
+# Central config dictionary for the Voice-RAG system. All components (STT, TTS,
+# LLM, embeddings, retrieval, I/O dirs) pull defaults from here. Values are kept
+# minimal and explicit to remain inspectable and override-friendly.
 CONFIG: Dict[str, Any] = {
     # --------------------------
     # Whisper STT
     # --------------------------
     "whisper_model": "small",
-    "whisper_compute_type": "int8",     # Lightweight CPU quantization
+    "whisper_compute_type": "int8",
     "whisper_beam_size": 1,
     "whisper_language": "en",
     "whisper_temperature": (0.0, 0.2, 0.4),
@@ -39,7 +39,7 @@ CONFIG: Dict[str, Any] = {
     "coqui_model": "tts_models/en/ljspeech/fast_pitch",
 
     # --------------------------
-    # Microphone Recording
+    # Recording
     # --------------------------
     "record_seconds_default": 10,
     "sample_rate": 16000,
@@ -47,7 +47,7 @@ CONFIG: Dict[str, Any] = {
     "mic_channels": 1,
 
     # --------------------------
-    # PDF / Document Handling
+    # Document Handling
     # --------------------------
     "save_repaired_pdf": False,
 
@@ -66,31 +66,33 @@ CONFIG: Dict[str, Any] = {
     "initial_retrieval_k": 16,
 
     # --------------------------
-    # Prompt Size Control
+    # Prompt Management
     # --------------------------
     "context_chunk_preview_chars": 1024,
+
+    # --------------------------
+    # General Output
+    # --------------------------
+    "output_dir": "output",
 }
 
-# ============================================================================
+# =============================================================================
 # Directory Initialization
-# ============================================================================
-# Ensures configured directories exist and resolves user paths safely.
-# ============================================================================
+# =============================================================================
 
 def _ensure_dir(path_value: Any, key: str) -> Path:
-    """
-    Convert a config path to a resolved Path object and ensure it exists.
-    Raises a clear error if initialization fails.
-    """
+    """Resolve a filesystem path from CONFIG, ensure the directory exists, and
+    return it as a Path. Raises RuntimeError on failure for clear surfacing."""
     try:
         p = Path(path_value).expanduser().resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
     except Exception as e:
         raise RuntimeError(
-            f"Could not initialize CONFIG['{key}'] directory ({path_value}): {e}"
+            f"Failed to initialize CONFIG['{key}'] directory ({path_value}): {e}"
         )
 
-# Normalize directory paths
+# Normalize directory paths early so downstream modules receive only Path objs.
 CONFIG["chroma_dir"] = _ensure_dir(CONFIG["chroma_dir"], "chroma_dir")
 CONFIG["docs_dir"] = _ensure_dir(CONFIG["docs_dir"], "docs_dir")
+CONFIG["output_dir"] = _ensure_dir(CONFIG["output_dir"], "output_dir")
