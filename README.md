@@ -94,16 +94,16 @@ All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
-    "whisper_model": "small",                           # Fast and reliable Whisper ASR model
-    "embedding_model": "voice_rag/bge-small-en",        # Efficient embedding model for quick retrieval
-    "chroma_dir": "voice_rag/chroma_db",                # Clean directory layout for vector storage
-    "ollama_http": "http://localhost:11434",            # Simple local endpoint for LLM access
-    "ollama_model": "qwen2.5:7b",                       # Strong mid-sized model for rich responses
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Natural-sounding English TTS
-    "record_seconds_default": 15,                       # Convenient default recording duration
-    "sample_rate": 16000,                               # Standard sample rate for great STT compatibility
-    "mic_channels": 1,                                  # Mono audio for clean, efficient capture
-    "output_dir": "output"                              # Organized output folder for all results
+    "whisper_model": "small",                           # Lightweight Whisper model offering strong accuracy with minimal latency
+    "embedding_model": "voice_rag/bge-small-en",        # Compact embedding model delivering reliable semantic retrieval
+    "chroma_dir": "voice_rag/chroma_db",                # Dedicated storage path for a clean, persistent vector index
+    "ollama_http": "http://localhost:11434",            # Local Ollama endpoint ensuring low-overhead LLM execution
+    "ollama_model": "qwen2.5:7b",                       # Balanced model choice providing robust reasoning at moderate runtime cost
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # High-quality English TTS model with efficient synthesis performance
+    "record_seconds_default": 15,                       # Practical default recording window for typical voice inputs
+    "sample_rate": 16000,                               # Standard sample rate aligned with speech-processing best practices
+    "mic_channels": 1,                                  # Mono capture for consistent STT performance and reduced processing load
+    "output_dir": "output"                              # Centralized output directory for predictable workflow organization
 }
 ```
 
