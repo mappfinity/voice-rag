@@ -2,9 +2,7 @@
 Gradio UI construction for Local Voice-RAG.
 
 Provides text and voice chat interfaces, TTS/STT handling, and
-retrieval-context visualization. Prioritizes concise logic,
-clear boundaries, and robust error handling aligned with 2025 ML
-tooling standards.
+retrieval-context visualization. 
 """
 
 from typing import Any, List, Dict
