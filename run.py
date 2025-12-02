@@ -1,10 +1,6 @@
 """
 Voice-RAG CLI entrypoint.
 
-Concise CLI for indexing PDF documents, launching a Gradio UI,
-and running an interactive chat loop. Follows standard 2025 ML
-tooling conventions: minimal side effects, clear docstrings,
-and explicit threading for background UI.
 """
 
 from __future__ import annotations
