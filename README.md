@@ -94,19 +94,74 @@ All configuration lives in `voice_rag/config.py`. Example:
 
 ```python
 CONFIG = {
-    "whisper_model": "small",                           # Whisper ASR model; small is fast and resource-efficient
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Coqui TTS model optimized for quick, natural English speech
-    "embedding_model": "voice_rag/bge-small-en",        # Voice embedding model for robust speaker representation
-    "chroma_dir": "voice_rag/chroma_db",                # Directory for storing Chroma vector database
-    "docs_dir": "voice_rag/docs",                       # Directory containing reference documents for embeddings
-    "ollama_http": "http://localhost:11434",            # Local Ollama API endpoint for model queries
-    "ollama_model": "qwen2.5:3b",                       # Light Ollama language model used for text generation
-    "record_seconds_default": 10,                       # Default audio recording duration in seconds
-    "sample_rate": 16000,                               # Audio sample rate for recordings
-    "mic_device_id": None,                              # Microphone device ID; None selects the default device
-    "mic_channels": 1,                                  # Number of audio channels (1 = mono)
-    "output_dir": "output"                              # Directory for saving generated files
+    # --------------------------
+    # Whisper STT
+    # --------------------------
+    "whisper_model": "small",                    # Efficient Whisper ASR model offering great speed and accuracy
+    "whisper_compute_type": "int8",              # INT8 compute for fast, lightweight inference
+    "whisper_beam_size": 1,                      # Single-beam decoding for low-latency transcription
+    "whisper_language": "en",                    # Optimized for high-quality English transcription
+    "whisper_temperature": (0.0, 0.2, 0.4),      # Multiple temperatures for flexible decoding behavior
+
+    # --------------------------
+    # Embeddings / Vector Index
+    # --------------------------
+    "embedding_model": "voice_rag/bge-small-en", # Compact, high-performance embedding model
+    "chroma_dir": "voice_rag/chroma_db",         # Path to the Chroma vector store for fast retrieval
+    "docs_dir": "voice_rag/docs",                # Folder containing documents to index and search
+    "embedding_batch_size": 32,                  # Solid batch size for efficient embedding generation
+    "embedding_num_workers": 0,                  # Single-process embedding for predictable performance
+
+    # --------------------------
+    # LLM (Ollama)
+    # --------------------------
+    "ollama_http": "http://localhost:11434",     # Local Ollama API endpoint for quick LLM access
+    "ollama_model": "qwen2.5:7b",                # Strong mid-size Qwen model providing rich responses
+    "llm_max_tokens": 1200,                      # Generous token limit for detailed outputs
+
+    # --------------------------
+    # TTS
+    # --------------------------
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Fast, natural English TTS for smooth playback
+
+    # --------------------------
+    # Recording
+    # --------------------------
+    "record_seconds_default": 15,                # Convenient default recording duration
+    "sample_rate": 16000,                        # Standard telephony-grade sample rate for STT compatibility
+    "mic_device_id": None,                       # Auto-select microphone for user-friendly setup
+    "mic_channels": 1,                           # Mono input for clean and simple audio capture
+
+    # --------------------------
+    # Document Handling
+    # --------------------------
+    "save_repaired_pdf": False,                  # Optional PDF repair disabled for faster processing
+
+    # --------------------------
+    # Reranking
+    # --------------------------
+    "reranker_use_cross_encoder": False,         # Lightweight reranking without cross-encoder overhead
+    "reranker_cross_max_tokens": 48,             # Efficient token cap for compact cross-encoding
+    "reranker_cross_batch_size": 4,              # Small batch size for predictable CPU use
+    "mmr_lambda": 0.6,                           # Balanced MMR tuning for diverse yet relevant results
+
+    # --------------------------
+    # Retrieval
+    # --------------------------
+    "max_retrieval_topk": 8,                     # Tight top-K limit for high-precision retrieval
+    "initial_retrieval_k": 16,                   # Broader initial search for robust recall
+
+    # --------------------------
+    # Prompt Management
+    # --------------------------
+    "context_chunk_preview_chars": 1024,         # Handy preview window for context chunk inspection
+
+    # --------------------------
+    # General Output
+    # --------------------------
+    "output_dir": "output",                      # Central output directory for all generated artifacts
 }
+
 
 
 ```
