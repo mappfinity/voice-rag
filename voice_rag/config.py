@@ -5,8 +5,8 @@ from typing import Any, Dict
 # Global Configuration
 # =============================================================================
 # Central config dictionary for the Voice-RAG system. All components (STT, TTS,
-# LLM, embeddings, retrieval, I/O dirs) pull defaults from here. Values are kept
-# minimal and explicit to remain inspectable and override-friendly.
+# LLM, embeddings, retrieval, I/O dirs) pull defaults from here.
+
 CONFIG: Dict[str, Any] = {
     # --------------------------
     # Whisper STT
