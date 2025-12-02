@@ -99,11 +99,11 @@ CONFIG = {
     "chroma_dir": "voice_rag/chroma_db",                # Dedicated storage path for a clean, persistent vector index
     "ollama_http": "http://localhost:11434",            # Local Ollama endpoint ensuring low-overhead LLM execution
     "ollama_model": "qwen2.5:7b",                       # Balanced model choice providing robust reasoning at moderate runtime cost
-    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # High-quality English TTS model with efficient synthesis performance
-    "record_seconds_default": 15,                       # Practical default recording window for typical voice inputs
-    "sample_rate": 16000,                               # Standard sample rate aligned with speech-processing best practices
+    "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Good quality English TTS model with efficient synthesis performance
+    "record_seconds_default": 15,                       # Default recording window (adjust, if needed)
+    "sample_rate": 16000,                               # Standard sample rate
     "mic_channels": 1,                                  # Mono capture for consistent STT performance and reduced processing load
-    "output_dir": "output"                              # Centralized output directory for predictable workflow organization
+    "output_dir": "output"                              # Centralized output director for chat history and generated wav files
 }
 ```
 
