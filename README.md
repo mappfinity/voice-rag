@@ -98,7 +98,7 @@ CONFIG = {
     "embedding_model": "voice_rag/bge-small-en",        # Compact embedding model delivering reliable semantic retrieval
     "chroma_dir": "voice_rag/chroma_db",                # Dedicated storage path for a clean, persistent vector index
     "ollama_http": "http://localhost:11434",            # Local Ollama endpoint ensuring low-overhead LLM execution
-    "ollama_model": "qwen2.5:7b",                       # Balanced model choice providing robust reasoning at moderate runtime cost
+    "ollama_model": "qwen2.5:3b",                       # Balanced model choice providing robust reasoning at moderate runtime cost
     "coqui_model": "tts_models/en/ljspeech/fast_pitch", # Good quality English TTS model with efficient synthesis performance
     "record_seconds_default": 15,                       # Default recording window (adjust, if needed)
     "sample_rate": 16000,                               # Standard sample rate
