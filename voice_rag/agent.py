@@ -73,7 +73,7 @@ class LocalRAGAgent:
         if self.reranker is None:
             self.reranker = ReRanker(
                 embed_fn=self.index.embed_texts,
-                ollama=self.ollama,
+                ollama=self.ollama
             )
 
     # ---------------------------------------------------------------------

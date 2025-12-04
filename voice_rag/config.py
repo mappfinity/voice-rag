@@ -30,7 +30,7 @@ CONFIG: Dict[str, Any] = {
     # LLM (Ollama)
     # --------------------------
     "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5:7b", # "qwen2.5:3b",
+    "ollama_model": "qwen2.5:3b", # "qwen2.5:3b",
     "llm_max_tokens": 1200,
 
     # --------------------------
@@ -54,10 +54,12 @@ CONFIG: Dict[str, Any] = {
     # --------------------------
     # Reranking
     # --------------------------
-    "reranker_use_cross_encoder": False,
+    "reranker_use_cross_encoder": True,
     "reranker_cross_max_tokens": 48,
     "reranker_cross_batch_size": 4,
+    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "mmr_lambda": 0.6,
+
 
     # --------------------------
     # Retrieval

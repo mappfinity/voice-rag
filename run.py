@@ -1,8 +1,6 @@
 """
 Voice-RAG CLI entrypoint.
-
 """
-
 from __future__ import annotations
 # ===============================================
 # Warnings
