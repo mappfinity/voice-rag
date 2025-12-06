@@ -2,7 +2,7 @@
 Gradio UI construction for Local Voice-RAG.
 
 Provides text and voice chat interfaces, TTS/STT handling, and
-retrieval-context visualization. 
+retrieval-context visualization.
 """
 
 from typing import Any, List, Dict
@@ -64,6 +64,34 @@ def safe_relative_path(file_path: str) -> str:
     except ValueError:
         return str(p)
 
+def _fix_latex_for_gradio(text: str) -> str:
+    """
+    Fix LaTeX rendering for Gradio's Markdown component.
+
+    Gradio uses KaTeX for LaTeX rendering, which requires proper delimiters:
+    - Inline math: $...$
+    - Display math: $$...$$
+
+    This function:
+    1. Converts escaped backslashes from JSON (\\) to single backslashes (\)
+    2. Converts LaTeX bracket notation to dollar notation
+    3. Preserves existing dollar-delimited math
+    """
+    if not text:
+        return text
+
+    # First, unescape double backslashes from JSON encoding
+    text = text.replace("\\\\", "\\")
+
+    # Convert display math: \[ ... \] to $$ ... $$
+    import re
+    text = re.sub(r'\\\[(.*?)\\\]', r'$$\1$$', text, flags=re.DOTALL)
+
+    # Convert inline math: \( ... \) to $ ... $
+    text = re.sub(r'\\\((.*?)\\\)', r'$\1$', text, flags=re.DOTALL)
+
+    return text
+
 # ---------------------------------------------------------------------------
 # Gradio App Builder
 # ---------------------------------------------------------------------------
@@ -85,10 +113,6 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
     # ---------------- TEXT HANDLER ----------------
 
     def handle_text_submit(user_text: str, tts_enabled: bool, top_k: int):
-        """
-        Handle text input: run RAG, update chat, optionally run TTS.
-        Returns: tuple(chat, contexts, audio_path, status_str)
-        """
         nonlocal chat_history
         user_text = (user_text or "").strip()
         if not user_text:
@@ -97,6 +121,9 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
         answer, rag_sources, voice_file = agent.answer_text(
             user_text, top_k=top_k, speak=False
         )
+
+        # Fix LaTeX for Gradio rendering
+        answer = _fix_latex_for_gradio(answer)
 
         if tts_enabled:
             try:
@@ -132,13 +159,9 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
 
         return chat_history, contexts_str, str(Path(voice_file).resolve()) if voice_file else None, ""
 
-
     # ---------------- VOICE HANDLER ----------------
 
     def handle_voice_submit(audio_in, tts_enabled: bool, top_k: int):
-        """
-        Handle voice input: run STT → RAG → TTS, update chat.
-        """
         nonlocal chat_history
         if not audio_in:
             return chat_history, "No audio provided.", None, None
@@ -169,6 +192,9 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                 transcription, top_k=top_k, speak=False
             )
 
+            # Fix LaTeX for Gradio rendering
+            answer = _fix_latex_for_gradio(answer)
+
             if tts_enabled:
                 try:
                     safe_text = agent.clean_for_tts(answer)
@@ -195,7 +221,6 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
 
             return chat_history, contexts_str, str(Path(voice_file).resolve()) if voice_file else None, ""
 
-
         finally:
             if tmp_path.startswith("gr_audio_") and os.path.exists(tmp_path):
                 try:
@@ -214,7 +239,15 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
             with gr.Tab("Text Chat"):
                 with gr.Row():
                     with gr.Column(scale=3):
-                        chat = gr.Chatbot(label="Conversation", height=400)
+                        chat = gr.Chatbot(
+                            label="Conversation",
+                            height=400,
+                            render_markdown=True,
+                            latex_delimiters=[
+                                {"left": "$$", "right": "$$", "display": True},
+                                {"left": "$", "right": "$", "display": False}
+                            ]
+                        )
                         txt_in = gr.Textbox(label="Your question", lines=2)
                         with gr.Row():
                             tts_flag = gr.Checkbox(label="Enable TTS", value=False)
@@ -254,7 +287,12 @@ def build_gradio_app(agent: LocalRAGAgent, title: str = "Local Voice-RAG (Optimi
                     with gr.Column(scale=3):
                         voice_chat = gr.Chatbot(
                             label="Conversation (Voice)",
-                            height=400
+                            height=400,
+                            render_markdown=True,
+                            latex_delimiters=[
+                                {"left": "$$", "right": "$$", "display": True},
+                                {"left": "$", "right": "$", "display": False}
+                            ]
                         )
                         gr.Markdown(
                             "Record in your browser or upload an audio file."
