@@ -104,7 +104,7 @@ CONFIG = {
     "record_seconds_default": 15,                           # Default recording window (adjust, if needed)
     "sample_rate": 16000,                                   # Standard sample rate
     "mic_channels": 1,                                      # Mono capture for consistent STT performance and reduced processing load
-    "output_dir": "output"                                  # Centralized output director for chat history and generated wav files
+    "output_dir": "output"                                  # Centralized output directory for chat history and generated wav files
 }
 ```
 
@@ -169,6 +169,44 @@ Allows interacting with both **UI** and **CLI** simultaneously.
 
 ---
 
+## System Flow
+
+The following diagram illustrates the high-level architecture and data flow of **Local Voice-RAG**:
+
+```mermaid
+flowchart TD
+    A[User Input] -->|Text| B[Text Handler]
+    A -->|Voice| C[Voice Handler (STT)]
+    C --> B
+    B --> D[LocalRAGAgent]
+    D --> E[Retriever Layer]
+    E -->|Wikipedia/arXiv/Tavily| F[Retrieved Contexts]
+    D --> G[LLM (Ollama)]
+    G --> H[Answer Generation]
+    H --> I{TTS Enabled?}
+    I -->|Yes| J[Coqui TTS → WAV File]
+    I -->|No| K[Text Output]
+    H --> K
+    K --> L[Chat History Storage]
+    J --> L
+    F --> L
+```
+
+### Flow Description
+
+1. **User Input**: Text or audio is captured via CLI or Gradio UI.
+2. **Voice Handler**: Audio is transcribed to text using **Faster-Whisper STT**.
+3. **Text Handler**: Handles user queries, forwards to **LocalRAGAgent**.
+4. **Retriever Layer**: Optional context retrieval from:
+    - Wikipedia
+    - arXiv
+    - Tavily (if API key present)
+5. **LocalRAGAgent + LLM**: Combines retrieved context with the query and generates an answer.
+6. **TTS (Optional)**: Generates spoken output via **Coqui TTS** if enabled.
+7. **Chat History**: Stores the conversation, context, and optional audio output in `output/chat_history.json`.
+
+---
+
 ## Chat History
 
 - Stored in `output/chat_history.json`
@@ -208,7 +246,8 @@ voice-rag/
     ├── stt.py                 # Faster Whisper STT wrapper
     ├── tts.py                 # Coqui TTS wrapper
     ├── ui.py                  # Gradio UI
-    └── utils.py               # Logging & helpers
+    ├── utils.py               # Logging & helpers
+    └── web_retreivers.py      # Web Retreivers (wiki, ArXiv, Tavily)
 ```
 
 ---
@@ -242,5 +281,4 @@ MIT License
 ## Contributing
 
 - PRs and issues are welcome
-- Suggest new features or optimizations
-- Maintain consistent style & doc
+- Suggestions
