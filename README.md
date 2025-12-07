@@ -1,4 +1,8 @@
 # Local Voice-RAG
+---
+
+![My Picture](voice_rag/img/voice-rag.PNG)
+
 
 Local Voice-RAG is a **fully offline Retrieval-Augmented Generation (RAG) assistant** optimized for CPU. It supports:
 
