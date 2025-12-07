@@ -1,80 +1,407 @@
+# from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+# import numpy as np
+# import torch
+# import torch.nn as nn
+# from transformers import AutoTokenizer, AutoModelForSequenceClassification
+# from .config import CONFIG
+#
+# # ---------------------------------------------------------
+# # Cosine similarity
+# # ---------------------------------------------------------
+# def _cosine_sim(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+#     if a.ndim == 1:
+#         a = a.reshape(1, -1)
+#     if b.ndim == 1:
+#         b = b.reshape(1, -1)
+#     a_norm = np.linalg.norm(a, axis=1, keepdims=True)
+#     b_norm = np.linalg.norm(b, axis=1, keepdims=True)
+#     a_norm[a_norm == 0] = 1e-12
+#     b_norm[b_norm == 0] = 1e-12
+#     return np.dot(a / a_norm, (b / b_norm).T)
+#
+# # ---------------------------------------------------------
+# # Optimized Cross-Encoder (CPU/GPU auto)
+# # ---------------------------------------------------------
+# class MiniLMCrossEncoder(nn.Module):
+#     def __init__(self, model_name: str = CONFIG["cross_encoder"]):
+#         super().__init__()
+#         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#         self.max_len = 192
+#         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+#         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+#         self.model.eval().to(self.device)
+#
+#         if self.device.type == "cpu":
+#             try:
+#                 example_input = {
+#                     "input_ids": torch.ones(1, 8, dtype=torch.long),
+#                     "attention_mask": torch.ones(1, 8, dtype=torch.long)
+#                 }
+#                 self.model = torch.jit.trace(self.model, example_input)
+#                 self.use_traced = True
+#             except Exception:
+#                 self.use_traced = False
+#         else:
+#             self.use_traced = False
+#
+#         if self.device.type == "cpu":
+#             torch.set_num_threads(min(torch.get_num_threads(), 6))
+#
+#     @torch.inference_mode()
+#     def forward(self, queries, docs, batch_size: int = 16):
+#         assert len(queries) == len(docs)
+#         all_scores = []
+#         for i in range(0, len(docs), batch_size):
+#             qs = queries[i:i + batch_size]
+#             ds = docs[i:i + batch_size]
+#             encoded = self.tokenizer(
+#                 qs,
+#                 ds,
+#                 padding=True,
+#                 truncation=True,
+#                 max_length=self.max_len,
+#                 return_tensors="pt"
+#             ).to(self.device)
+#             if self.device.type == "cuda":
+#                 with torch.autocast("cuda", dtype=torch.float16, enabled=True):
+#                     out = self.model(**encoded)
+#             else:
+#                 out = self.model(**encoded)
+#             scores = out.logits.squeeze(-1)
+#             all_scores.append(scores)
+#         return torch.cat(all_scores, dim=0)
+#
+# # ---------------------------------------------------------
+# # ReRanker (embedding + optional CE)
+# # ---------------------------------------------------------
+# class ReRanker:
+#     def __init__(
+#             self,
+#             embed_fn: Callable[[Sequence[str]], Union[np.ndarray, List[List[float]]]],
+#             ollama: Optional[Any] = None,
+#             normalize_embeddings: bool = True,
+#             cross_encoder_batch_size: int = CONFIG.get("reranker_cross_batch_size", 4),
+#             mmr_lambda: float = CONFIG.get("mmr_lambda", 0.6),
+#             use_cross_encoder: bool = CONFIG.get("reranker_use_cross_encoder", False),
+#             cross_encoder: Optional[nn.Module] = None,
+#     ):
+#         self.embed_fn = embed_fn
+#         self.ollama = ollama
+#         self.normalize_embeddings = normalize_embeddings
+#         self.cross_encoder_batch_size = cross_encoder_batch_size
+#         self.mmr_lambda = mmr_lambda
+#         self.use_cross_encoder = use_cross_encoder
+#         self.cross_encoder = cross_encoder or MiniLMCrossEncoder()
+#         self.cross_encoder.eval()
+#
+#     # -----------------------------
+#     # Embedding helpers
+#     # -----------------------------
+#     def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
+#         if not texts:
+#             return np.array([])
+#         arr = self.embed_fn(list(texts))
+#         if not isinstance(arr, np.ndarray):
+#             arr = np.asarray(arr)
+#         if arr.ndim == 1:
+#             arr = arr.reshape(1, -1)
+#         if self.normalize_embeddings:
+#             norms = np.linalg.norm(arr, axis=1, keepdims=True)
+#             norms[norms == 0] = 1e-12
+#             arr = arr / norms
+#         return arr
+#
+#     def embed_query(self, q: str) -> np.ndarray:
+#         return self.embed_texts([q])[0]
+#
+#     # -----------------------------
+#     # Cross-encoder scoring
+#     # -----------------------------
+#     def cross_encoder_rescore(self, query: str, docs: Sequence[str]) -> np.ndarray:
+#         scores = []
+#         bs = self.cross_encoder_batch_size
+#         with torch.no_grad():
+#             for i in range(0, len(docs), bs):
+#                 chunk = docs[i:i+bs]
+#                 s = self.cross_encoder([query] * len(chunk), chunk)
+#                 scores.append(s.cpu().numpy())
+#         return np.concatenate(scores, axis=0) if scores else np.array([])
+#
+#     # -----------------------------
+#     # Normalization
+#     # -----------------------------
+#     def _safe_normalize_scores(self, scores: np.ndarray) -> np.ndarray:
+#         if scores.size == 0:
+#             return scores
+#         lo, hi = scores.min(), scores.max()
+#         if hi == lo:
+#             return np.zeros_like(scores)
+#         return (scores - lo) / (hi - lo)
+#
+#     # -----------------------------
+#     # Maximal Marginal Relevance (MMR)
+#     # -----------------------------
+#     def mmr(
+#             self,
+#             q_emb: np.ndarray,
+#             d_emb: np.ndarray,
+#             top_k: int,
+#             lambda_param: Optional[float] = None,
+#     ) -> List[int]:
+#         lambda_param = lambda_param if lambda_param is not None else self.mmr_lambda
+#         n = d_emb.shape[0]
+#         if top_k >= n:
+#             return list(range(n))
+#         selected = []
+#         remaining = set(range(n))
+#         q_emb_r = q_emb.reshape(1, -1)
+#         sim_q = _cosine_sim(q_emb_r, d_emb)[0]
+#         sim_docs = _cosine_sim(d_emb, d_emb)
+#         first = int(np.argmax(sim_q))
+#         selected.append(first)
+#         remaining.remove(first)
+#         while len(selected) < top_k and remaining:
+#             best_idx = -1
+#             best_score = -1e10
+#             for idx in remaining:
+#                 redundancy = max(sim_docs[idx, s] for s in selected)
+#                 score = lambda_param * sim_q[idx] - (1 - lambda_param) * redundancy
+#                 if score > best_score:
+#                     best_score = score
+#                     best_idx = idx
+#             selected.append(best_idx)
+#             remaining.remove(best_idx)
+#         return selected
+#
+#     # -----------------------------
+#     # Main reranker
+#     # -----------------------------
+#     def rerank(
+#             self,
+#             query: str,
+#             candidates: Sequence[Dict[str, Any]],
+#             top_k: int = 5,
+#             use_mmr: bool = True,
+#             return_scores: bool = False,
+#     ) -> List[Dict[str, Any]]:
+#         if not candidates:
+#             return []
+#
+#         texts = [c.get("text", "") for c in candidates]
+#
+#         # 1. Cross-encoder rescoring
+#         if self.use_cross_encoder:
+#             raw = self.cross_encoder_rescore(query, texts)
+#             norm_scores = self._safe_normalize_scores(raw)
+#             chosen_idx = np.argsort(-norm_scores)[:top_k].tolist()
+#         else:
+#             embeddings = []
+#             missing = []
+#             for i, c in enumerate(candidates):
+#                 emb = c.get("embedding")
+#                 if emb is None:
+#                     missing.append(i)
+#                     embeddings.append(None)
+#                 else:
+#                     embeddings.append(np.asarray(emb))
+#             if missing:
+#                 e = self.embed_texts([texts[i] for i in missing])
+#                 for j, idx in enumerate(missing):
+#                     embeddings[idx] = e[j]
+#             d_emb = np.vstack(embeddings)
+#             q_emb = self.embed_query(query)
+#             raw = _cosine_sim(q_emb.reshape(1, -1), d_emb)[0]
+#             norm_scores = self._safe_normalize_scores(raw)
+#             if use_mmr and top_k < len(candidates):
+#                 chosen_idx = self.mmr(q_emb, d_emb, top_k)
+#             else:
+#                 chosen_idx = np.argsort(-norm_scores)[:top_k].tolist()
+#
+#         # Build final results
+#         results = []
+#         for idx in chosen_idx:
+#             item = dict(candidates[idx])
+#             score = float(norm_scores[idx])
+#             item["_score"] = score
+#             item["score"] = score  # <-- FIX: propagate score to agent
+#             results.append(item)
+#
+#         results.sort(key=lambda x: x["_score"], reverse=True)
+#
+#         if not return_scores:
+#             for r in results:
+#                 r.pop("_score", None)
+#
+#         return results
+
+
+
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 import numpy as np
+import logging
 import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from .config import CONFIG
 
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 # ---------------------------------------------------------
 # Cosine similarity
 # ---------------------------------------------------------
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Compute cosine similarity between rows of a and rows of b.
+
+    Ensures inputs are 2D and guards against zero norms.
+    """
+    if a is None or b is None:
+        raise ValueError("Inputs to _cosine_sim must not be None")
+    a = np.asarray(a)
+    b = np.asarray(b)
     if a.ndim == 1:
         a = a.reshape(1, -1)
     if b.ndim == 1:
         b = b.reshape(1, -1)
+
+    # safe norms
     a_norm = np.linalg.norm(a, axis=1, keepdims=True)
     b_norm = np.linalg.norm(b, axis=1, keepdims=True)
     a_norm[a_norm == 0] = 1e-12
     b_norm[b_norm == 0] = 1e-12
-    return np.dot(a / a_norm, (b / b_norm).T)
+
+    a_unit = a / a_norm
+    b_unit = b / b_norm
+    return np.dot(a_unit, b_unit.T)
+
 
 # ---------------------------------------------------------
 # Optimized Cross-Encoder (CPU/GPU auto)
 # ---------------------------------------------------------
 class MiniLMCrossEncoder(nn.Module):
-    def __init__(self, model_name: str = CONFIG["cross_encoder"]):
+    """Lightweight wrapper around a transformers sequence-classification model
+
+    - Automatically places the model on CUDA if available
+    - Attempts to torch.jit.trace on CPU to improve inference time when possible
+    - Exposes a callable forward(queries, docs, batch_size)
+    """
+
+    def __init__(self, model_name: str = CONFIG.get("cross_encoder")):
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.max_len = 192
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        self.model.eval().to(self.device)
+        self.max_len = int(CONFIG.get("reranker_cross_max_tokens", 192))
+        self.model_name = model_name
 
+        # Lazy init tokenizer/model with defensive try/except
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            self.model.eval().to(self.device)
+        except Exception as e:
+            logger.exception("Failed to initialize cross-encoder model %s", model_name)
+            raise
+
+        # Try tracing on CPU to speed up small CPU deployments
+        self.use_traced = False
         if self.device.type == "cpu":
             try:
-                example_input = {
-                    "input_ids": torch.ones(1, 8, dtype=torch.long),
-                    "attention_mask": torch.ones(1, 8, dtype=torch.long)
-                }
+                example_input = self.tokenizer("example", "doc", return_tensors="pt", max_length=8, truncation=True)
+                # Move example inputs to cpu tensors of correct dtype
+                example_input = {k: v for k, v in example_input.items()}
                 self.model = torch.jit.trace(self.model, example_input)
                 self.use_traced = True
+                logger.info("Using traced cross-encoder on CPU")
             except Exception:
+                logger.info("Tracing cross-encoder not available; using eager model")
                 self.use_traced = False
-        else:
-            self.use_traced = False
 
+        # Limit CPU threads for inference to avoid noisy oversubscription
         if self.device.type == "cpu":
-            torch.set_num_threads(min(torch.get_num_threads(), 6))
+            try:
+                torch.set_num_threads(min(torch.get_num_threads(), 6))
+            except Exception:
+                pass
 
     @torch.inference_mode()
-    def forward(self, queries, docs, batch_size: int = 16):
-        assert len(queries) == len(docs)
+    def forward(self, queries: Sequence[str], docs: Sequence[str], batch_size: int = 16) -> torch.Tensor:
+        """Score (query, doc) pairs using the cross-encoder.
+
+        Returns:
+            Tensor of shape (len(docs),) with float scores.
+        """
+        assert len(queries) == len(docs), "queries and docs must be same length"
         all_scores = []
+
         for i in range(0, len(docs), batch_size):
             qs = queries[i:i + batch_size]
             ds = docs[i:i + batch_size]
-            encoded = self.tokenizer(
-                qs,
-                ds,
-                padding=True,
-                truncation=True,
-                max_length=self.max_len,
-                return_tensors="pt"
-            ).to(self.device)
+
+            # tokenizer will handle batching
+            try:
+                encoded = self.tokenizer(
+                    qs,
+                    ds,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_len,
+                    return_tensors="pt",
+                )
+            except Exception:
+                # fallback to pairwise encoding if tokenizer fails on batch
+                enc_list = [self.tokenizer(q, d, truncation=True, max_length=self.max_len, return_tensors="pt") for q, d in zip(qs, ds)]
+                # collate manually
+                encoded = {k: torch.cat([e[k] for e in enc_list], dim=0) for k in enc_list[0].keys()}
+
+            # move to device
+            try:
+                encoded = {k: v.to(self.device) for k, v in encoded.items()}
+            except Exception:
+                # if encoded contains non-tensor objects, ignore
+                pass
+
             if self.device.type == "cuda":
+                # use mixed precision on GPU if available
                 with torch.autocast("cuda", dtype=torch.float16, enabled=True):
                     out = self.model(**encoded)
             else:
                 out = self.model(**encoded)
-            scores = out.logits.squeeze(-1)
-            all_scores.append(scores)
-        return torch.cat(all_scores, dim=0)
+
+            logits = out.logits
+            # ensure shape (batch, ) or (batch, 1)
+            if logits.ndim == 2 and logits.shape[1] == 1:
+                scores = logits.squeeze(-1)
+            elif logits.ndim == 2 and logits.shape[1] > 1:
+                # assume binary classification with logits for each class; take positive class
+                scores = logits[:, 1]
+            else:
+                scores = logits
+
+            all_scores.append(scores.detach().cpu())
+
+        if all_scores:
+            return torch.cat(all_scores, dim=0)
+        return torch.tensor([])
+
 
 # ---------------------------------------------------------
 # ReRanker (embedding + optional CE)
 # ---------------------------------------------------------
 class ReRanker:
+    """ReRanker that supports:
+    - embedding-based cosine similarity
+    - optional MMR selection
+    - optional cross-encoder rescoring
+
+    Defensive and robust: normalizes inputs/outputs, catches and logs unexpected shapes,
+    and returns a canonical list[dict] with 'text','meta','score' fields.
+    """
+
     def __init__(
             self,
             embed_fn: Callable[[Sequence[str]], Union[np.ndarray, List[List[float]]]],
@@ -88,54 +415,101 @@ class ReRanker:
         self.embed_fn = embed_fn
         self.ollama = ollama
         self.normalize_embeddings = normalize_embeddings
-        self.cross_encoder_batch_size = cross_encoder_batch_size
-        self.mmr_lambda = mmr_lambda
-        self.use_cross_encoder = use_cross_encoder
-        self.cross_encoder = cross_encoder or MiniLMCrossEncoder()
-        self.cross_encoder.eval()
+        self.cross_encoder_batch_size = int(cross_encoder_batch_size)
+        self.mmr_lambda = float(mmr_lambda)
+        self.use_cross_encoder = bool(use_cross_encoder)
+
+        # Initialize cross_encoder lazily and defensively
+        if cross_encoder is not None:
+            self.cross_encoder = cross_encoder
+        elif self.use_cross_encoder:
+            try:
+                self.cross_encoder = MiniLMCrossEncoder()
+            except Exception as e:
+                logger.exception("Failed to initialize configured cross-encoder; disabling cross-encoder")
+                self.cross_encoder = None
+                self.use_cross_encoder = False
+        else:
+            self.cross_encoder = None
+
+        if self.cross_encoder is not None:
+            try:
+                self.cross_encoder.eval()
+            except Exception:
+                pass
 
     # -----------------------------
     # Embedding helpers
     # -----------------------------
     def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
+        """Embed a sequence of texts using embed_fn and return a 2D numpy array (n, d).
+
+        Defensive: accepts lists, tuples or numpy arrays returned by embed_fn.
+        """
         if not texts:
-            return np.array([])
-        arr = self.embed_fn(list(texts))
-        if not isinstance(arr, np.ndarray):
-            arr = np.asarray(arr)
+            return np.zeros((0, 0), dtype=np.float32)
+
+        try:
+            arr = self.embed_fn(list(texts))
+        except Exception as e:
+            logger.exception("embed_fn raised an exception")
+            raise
+
+        arr = np.asarray(arr)
         if arr.ndim == 1:
             arr = arr.reshape(1, -1)
-        if self.normalize_embeddings:
+
+        if self.normalize_embeddings and arr.size != 0:
             norms = np.linalg.norm(arr, axis=1, keepdims=True)
             norms[norms == 0] = 1e-12
             arr = arr / norms
+
         return arr
 
     def embed_query(self, q: str) -> np.ndarray:
-        return self.embed_texts([q])[0]
+        e = self.embed_texts([q])
+        if e.size == 0:
+            return np.zeros((1, 0), dtype=np.float32)
+        return e[0]
 
     # -----------------------------
     # Cross-encoder scoring
     # -----------------------------
     def cross_encoder_rescore(self, query: str, docs: Sequence[str]) -> np.ndarray:
+        """Rescore docs using the cross-encoder. Returns numpy array of scores (len(docs),)
+
+        If cross-encoder is unavailable, raises RuntimeError.
+        """
+        if self.cross_encoder is None:
+            raise RuntimeError("Cross-encoder is not initialized")
+
         scores = []
-        bs = self.cross_encoder_batch_size
-        with torch.no_grad():
+        bs = max(1, int(self.cross_encoder_batch_size))
+        try:
             for i in range(0, len(docs), bs):
                 chunk = docs[i:i+bs]
-                s = self.cross_encoder([query] * len(chunk), chunk)
+                # cross_encoder expects (queries, docs) of equal length
+                s = self.cross_encoder([query] * len(chunk), chunk, batch_size=bs)
                 scores.append(s.cpu().numpy())
-        return np.concatenate(scores, axis=0) if scores else np.array([])
+        except Exception:
+            logger.exception("Cross-encoder rescoring failed")
+            raise
+
+        if scores:
+            return np.concatenate(scores, axis=0)
+        return np.array([])
 
     # -----------------------------
     # Normalization
     # -----------------------------
     def _safe_normalize_scores(self, scores: np.ndarray) -> np.ndarray:
+        scores = np.asarray(scores)
         if scores.size == 0:
             return scores
-        lo, hi = scores.min(), scores.max()
+        lo, hi = float(scores.min()), float(scores.max())
         if hi == lo:
-            return np.zeros_like(scores)
+            # all equal -> return zeros
+            return np.zeros_like(scores, dtype=float)
         return (scores - lo) / (hi - lo)
 
     # -----------------------------
@@ -148,29 +522,38 @@ class ReRanker:
             top_k: int,
             lambda_param: Optional[float] = None,
     ) -> List[int]:
-        lambda_param = lambda_param if lambda_param is not None else self.mmr_lambda
-        n = d_emb.shape[0]
+        lambda_param = float(lambda_param) if lambda_param is not None else float(self.mmr_lambda)
+        if d_emb is None or d_emb.size == 0:
+            return []
+        n = int(d_emb.shape[0])
         if top_k >= n:
             return list(range(n))
-        selected = []
+
+        selected: List[int] = []
         remaining = set(range(n))
         q_emb_r = q_emb.reshape(1, -1)
         sim_q = _cosine_sim(q_emb_r, d_emb)[0]
         sim_docs = _cosine_sim(d_emb, d_emb)
+
+        # pick the highest-sim document to query first
         first = int(np.argmax(sim_q))
         selected.append(first)
         remaining.remove(first)
+
         while len(selected) < top_k and remaining:
             best_idx = -1
-            best_score = -1e10
+            best_score = -1e12
             for idx in remaining:
-                redundancy = max(sim_docs[idx, s] for s in selected)
+                redundancy = max(sim_docs[idx, s] for s in selected) if selected else 0.0
                 score = lambda_param * sim_q[idx] - (1 - lambda_param) * redundancy
                 if score > best_score:
                     best_score = score
                     best_idx = idx
+            if best_idx == -1:
+                break
             selected.append(best_idx)
             remaining.remove(best_idx)
+
         return selected
 
     # -----------------------------
@@ -184,49 +567,140 @@ class ReRanker:
             use_mmr: bool = True,
             return_scores: bool = False,
     ) -> List[Dict[str, Any]]:
+        """Rerank candidate dicts and return a list of dicts with 'text','meta','score'.
+
+        Args:
+            query: user query string
+            candidates: sequence of {'text':..., 'meta':..., 'embedding':..., ...}
+            top_k: number of final items to return
+            use_mmr: whether to apply MMR selection
+            return_scores: if True, keep the internal _score key for debugging
+        """
         if not candidates:
             return []
 
-        texts = [c.get("text", "") for c in candidates]
-
-        # 1. Cross-encoder rescoring
-        if self.use_cross_encoder:
-            raw = self.cross_encoder_rescore(query, texts)
-            norm_scores = self._safe_normalize_scores(raw)
-            chosen_idx = np.argsort(-norm_scores)[:top_k].tolist()
-        else:
-            embeddings = []
-            missing = []
-            for i, c in enumerate(candidates):
-                emb = c.get("embedding")
-                if emb is None:
-                    missing.append(i)
-                    embeddings.append(None)
+        # Normalize candidate entries defensively
+        normalized_cands = []
+        texts: List[str] = []
+        for i, c in enumerate(candidates):
+            try:
+                if isinstance(c, dict):
+                    text = str(c.get("text", ""))
+                    meta = dict(c.get("meta", {}) or {})
+                    emb = c.get("embedding")
                 else:
-                    embeddings.append(np.asarray(emb))
-            if missing:
-                e = self.embed_texts([texts[i] for i in missing])
-                for j, idx in enumerate(missing):
-                    embeddings[idx] = e[j]
-            d_emb = np.vstack(embeddings)
-            q_emb = self.embed_query(query)
-            raw = _cosine_sim(q_emb.reshape(1, -1), d_emb)[0]
-            norm_scores = self._safe_normalize_scores(raw)
-            if use_mmr and top_k < len(candidates):
-                chosen_idx = self.mmr(q_emb, d_emb, top_k)
-            else:
-                chosen_idx = np.argsort(-norm_scores)[:top_k].tolist()
+                    # fallback for unexpected shapes
+                    text = str(c)
+                    meta = {}
+                    emb = None
+            except Exception:
+                text = str(c)
+                meta = {}
+                emb = None
 
-        # Build final results
+            normalized_cands.append({"text": text, "meta": meta, "embedding": emb})
+            texts.append(text)
+
+        # 1) If using cross-encoder, prefer that path
+        if self.use_cross_encoder and self.cross_encoder is not None:
+            try:
+                raw_scores = self.cross_encoder_rescore(query, texts)
+                norm_scores = self._safe_normalize_scores(raw_scores)
+                # choose top_k by normalized score
+                chosen_idx = np.argsort(-norm_scores)[:int(top_k)].tolist()
+                results = []
+                for idx in chosen_idx:
+                    item = dict(normalized_cands[idx])
+                    score = float(norm_scores[idx]) if idx < len(norm_scores) else 0.0
+                    item["score"] = score
+                    item["_score"] = score
+                    results.append(item)
+
+                # sort descending
+                results.sort(key=lambda x: x.get("_score", 0.0), reverse=True)
+                if not return_scores:
+                    for r in results:
+                        r.pop("_score", None)
+                return results
+            except Exception:
+                logger.exception("Cross-encoder path failed; falling back to embedding-based rerank")
+                # continue to embedding path
+
+        # 2) Embedding-based reranking (cosine similarity + optional MMR)
+        # Build embeddings matrix, computing missing ones via embed_fn
+        embeddings: List[np.ndarray] = []
+        missing_indices: List[int] = []
+        for i, c in enumerate(normalized_cands):
+            emb = c.get("embedding")
+            if emb is None:
+                missing_indices.append(i)
+                embeddings.append(None)
+            else:
+                try:
+                    e = np.asarray(emb)
+                    if e.ndim == 1:
+                        embeddings.append(e)
+                    else:
+                        embeddings.append(e.reshape(-1))
+                except Exception:
+                    embeddings.append(None)
+                    missing_indices.append(i)
+
+        if missing_indices:
+            try:
+                computed = self.embed_texts([texts[i] for i in missing_indices])
+                # assign them back
+                for j, idx in enumerate(missing_indices):
+                    embeddings[idx] = computed[j]
+            except Exception:
+                logger.exception("Failed to compute embeddings for missing candidates")
+                # fallback: set zero vectors so they rank low
+                for idx in missing_indices:
+                    embeddings[idx] = np.zeros((computed.shape[1],), dtype=float) if 'computed' in locals() and computed.size else np.zeros((1,), dtype=float)
+
+        # stack embeddings; ensure shape (n, d)
+        try:
+            d_emb = np.vstack(embeddings)
+        except Exception:
+            # last ditch: convert to array of objects then to float array
+            d_emb = np.asarray([np.asarray(e).reshape(-1) for e in embeddings])
+
+        q_emb = self.embed_query(query)
+
+        # handle degenerate cases
+        if d_emb.size == 0 or q_emb.size == 0:
+            # return first top_k candidates with 0.0 scores
+            out = []
+            for c in normalized_cands[:int(top_k)]:
+                it = dict(c)
+                it["score"] = 0.0
+                if return_scores:
+                    it["_score"] = 0.0
+                out.append(it)
+            return out
+
+        raw = _cosine_sim(q_emb.reshape(1, -1), d_emb)[0]
+        norm_scores = self._safe_normalize_scores(raw)
+
+        n = len(normalized_cands)
+        if use_mmr and int(top_k) < n:
+            try:
+                chosen_idx = self.mmr(q_emb, d_emb, int(top_k))
+            except Exception:
+                logger.exception("MMR selection failed; falling back to top-k by score")
+                chosen_idx = np.argsort(-norm_scores)[:int(top_k)].tolist()
+        else:
+            chosen_idx = np.argsort(-norm_scores)[:int(top_k)].tolist()
+
         results = []
         for idx in chosen_idx:
-            item = dict(candidates[idx])
-            score = float(norm_scores[idx])
+            item = dict(normalized_cands[idx])
+            score = float(norm_scores[idx]) if idx < len(norm_scores) else 0.0
+            item["score"] = score
             item["_score"] = score
-            item["score"] = score  # <-- FIX: propagate score to agent
             results.append(item)
 
-        results.sort(key=lambda x: x["_score"], reverse=True)
+        results.sort(key=lambda x: x.get("_score", 0.0), reverse=True)
 
         if not return_scores:
             for r in results:
