@@ -176,17 +176,17 @@ The following diagram illustrates the high-level architecture and data flow of *
 ```mermaid
 flowchart TD
     A[User Input] -->|Text| B[Text Handler]
-    A -->|Voice| C[Voice Handler (STT)]
+    A -->|Voice| C[Voice Handler STT]
     B --> D[RAG Agent]
     C --> D
     D --> E[Retrieve Contexts]
-    E --> F[LLM / Ollama]
+    E --> F[LLM Ollama]
     F --> G[Answer Generation]
     G --> H{TTS Enabled?}
     H -->|Yes| I[Coqui TTS]
     H -->|No| J[Text Response]
     I --> J
-    J --> K[Display in UI / CLI]
+    J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
 ```
 
