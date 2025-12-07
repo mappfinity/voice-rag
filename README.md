@@ -177,19 +177,17 @@ The following diagram illustrates the high-level architecture and data flow of *
 flowchart TD
     A[User Input] -->|Text| B[Text Handler]
     A -->|Voice| C[Voice Handler (STT)]
-    C --> B
-    B --> D[LocalRAGAgent]
-    D --> E[Retriever Layer]
-    E -->|Wikipedia/arXiv/Tavily| F[Retrieved Contexts]
-    D --> G[LLM (Ollama)]
-    G --> H[Answer Generation]
-    H --> I{TTS Enabled?}
-    I -->|Yes| J[Coqui TTS → WAV File]
-    I -->|No| K[Text Output]
-    H --> K
+    B --> D[RAG Agent]
+    C --> D
+    D --> E[Retrieve Contexts]
+    E --> F[LLM / Ollama]
+    F --> G[Answer Generation]
+    G --> H{TTS Enabled?}
+    H -->|Yes| I[Coqui TTS]
+    H -->|No| J[Text Response]
+    I --> J
+    J --> K[Display in UI / CLI]
     K --> L[Chat History Storage]
-    J --> L
-    F --> L
 ```
 
 ### Flow Description
