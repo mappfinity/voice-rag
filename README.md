@@ -179,15 +179,24 @@ flowchart TD
     A -->|Voice| C[Voice Handler STT]
     B --> D[RAG Agent]
     C --> D
-    D --> E[Retrieve Contexts]
+
+    D --> M{Web Retrieval Enabled?}
+    M -->|Yes| W[Web Retriever<br>(Wiki / arXiv / Tavily)]
+    M -->|No| E[Local Retrieval]
+
+    W --> E[Retrieve Contexts<br>(Local + Web)]
+
     E --> F[LLM Ollama]
     F --> G[Answer Generation]
+
     G --> H{TTS Enabled?}
     H -->|Yes| I[Coqui TTS]
     H -->|No| J[Text Response]
+
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
+
 ```
 
 ### Flow Description
