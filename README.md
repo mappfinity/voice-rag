@@ -181,19 +181,10 @@ flowchart TD
     C --> D
 
     D --> M{Web Retrieval Enabled?}
-    M -->|Yes| S[Start Web Retrieval]
+    M -->|Yes| W[Web Retriever (Wiki / arXiv / Tavily)]
     M -->|No| E[Local Retrieval]
 
-    S --> W1["Wiki\nRetriever"]
-    S --> W2["arXiv\nRetriever"]
-    S --> W3["Tavily\nRetriever"]
-
-    W1 --> R["Aggregate & Rank\n(relevance, recency)"]
-    W2 --> R
-    W3 --> R
-
-    R --> U["Deduplicate & Merge\n(with Local index)"]
-    U --> E
+    W --> E[Retrieve Contexts (Local + Web)]
 
     E --> F[LLM Ollama]
     F --> G[Answer Generation]
@@ -205,7 +196,6 @@ flowchart TD
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
-
 
 ```
 
