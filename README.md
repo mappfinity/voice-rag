@@ -181,10 +181,10 @@ flowchart TD
     C --> D
 
     D --> M{Web Retrieval Enabled?}
-    M -->|Yes| W[Web Retriever (Wiki / arXiv / Tavily)]
+    M -->|Yes| W[Web Retriever]
     M -->|No| E[Local Retrieval]
 
-    W --> E[Retrieve Contexts (Local + Web)]
+    W --> E[Context Retrieval]
 
     E --> F[LLM Ollama]
     F --> G[Answer Generation]
