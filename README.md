@@ -120,11 +120,6 @@ CONFIG = {
     "sample_rate": 16000,
     "mic_channels": 1,
     "output_dir": "output",
-
-    "enable_web": True,
-    "wiki_enabled": True,
-    "arxiv_enabled": True,
-    "tavily_enabled": False,
 }
 ```
 
@@ -191,7 +186,9 @@ python run.py --ui --chat
 
 ## System Flow
 
-``` mermaid
+The following diagram illustrates the high-level architecture and data flow of **Local Voice-RAG**:
+
+```mermaid
 flowchart TD
     A[User Input] -->|Text| B[Text Handler]
     A -->|Voice| C[Voice Handler STT]
@@ -199,7 +196,7 @@ flowchart TD
     C --> D
 
     D --> M{Web Retrieval Enabled?}
-    M -->|Yes| W[Web Retriever<br>(Wikipedia / arXiv / Tavily)]
+    M -->|Yes| W[Web Retriever]
     M -->|No| E[Local Retrieval]
 
     W --> E[Context Retrieval]
@@ -214,42 +211,96 @@ flowchart TD
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
+
 ```
 
-------------------------------------------------------------------------
+### Flow Description
+
+1. **User Input**: Text or audio is captured via CLI or Gradio UI.
+2. **Voice Handler**: Audio is transcribed to text using **Faster-Whisper STT**.
+3. **Text Handler**: Handles user queries, forwards to **LocalRAGAgent**.
+4. **Retriever Layer**: Optional context retrieval from:
+    - Wikipedia
+    - arXiv
+    - Tavily (if API key present)
+5. **LocalRAGAgent + LLM**: Combines retrieved context with the query and generates an answer.
+6. **TTS (Optional)**: Generates spoken output via **Coqui TTS** if enabled.
+7. **Chat History**: Stores the conversation, context, and optional audio output in `output/chat_history.json`.
+
+---
 
 ## Chat History
 
-Stored in `output/chat_history.json`.
+- Stored in `output/chat_history.json`
+- Each entry contains:
+    - User text or STT transcript
+    - Assistant response
+    - RAG source snippets (top-k)
+    - TTS audio output path
+    - Timestamp
 
-------------------------------------------------------------------------
+Export plaintext history:
+
+```bash
+python -m voice_rag.history.export_txt
+```
+
+---
 
 ## Folder Structure
 
-    voice-rag/
-    ├── run.py
-    ├── requirements.txt
-    ├── LICENSE
-    ├── README.md
-    └── voice_rag/
-        ├── agent.py
-        ├── agent_helpers.py
-        ├── cli.py
-        ├── config.py
-        ├── embeddings.py
-        ├── history.py
-        ├── hotkeys.py
-        ├── pdf_loader.py
-        ├── reranker.py
-        ├── stt.py
-        ├── tts.py
-        ├── ui.py
-        ├── utils.py
-        └── web_retreivers.py
+```
+voice-rag/
+├── run.py                     # Main launcher
+├── requirements.txt
+├── LICENSE
+├── README.md
+└── voice_rag/
+    ├── agent.py               # Core RAG agent
+    ├── agent_helpers.py       # Audio recording & utilities
+    ├── cli.py                 # CLI + hotkeys + interactive REPL
+    ├── config.py              # Config + directory setup
+    ├── embeddings.py          # ChromaDB + embeddings
+    ├── history.py             # Chat history storage/export
+    ├── hotkeys.py             # Hotkey manager
+    ├── pdf_loader.py          # PDF/TXT parsing & chunking
+    ├── reranker.py            # Optional reranking
+    ├── stt.py                 # Faster Whisper STT wrapper
+    ├── tts.py                 # Coqui TTS wrapper
+    ├── ui.py                  # Gradio UI
+    ├── utils.py               # Logging & helpers
+    └── web_retreivers.py      # Web Retreivers (wiki, ArXiv, Tavily)
+```
 
-------------------------------------------------------------------------
+---
+
+## Notes & Tips
+
+- **Large PDFs** may take longer to embed on CPU
+- **Incremental indexing** prevents re-processing already-indexed documents
+- **Audio device selection** configurable in `config.py`
+- **Scanned PDFs** require OCR preprocessing
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|---------|
+| Gradio UI not loading | Check port 7861 availability |
+| STT errors | Verify microphone and Faster Whisper installation |
+| TTS errors | Check audio output device & Coqui TTS installation |
+| ChromaDB issues | Delete `voice_rag/chroma_db` and reindex |
+
+---
 
 ## License
 
 MIT License
 
+---
+
+## Contributing
+
+- PRs and issues are welcome
+- Suggestions
