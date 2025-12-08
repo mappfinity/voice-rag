@@ -98,7 +98,7 @@ Ensure **Ollama** is installed and running:
 
 ``` bash
 ollama serve
-ollama pull qwen2.5:3b
+ollama pull mistral:7b
 ```
 
 ------------------------------------------------------------------------
@@ -114,7 +114,7 @@ CONFIG = {
     "chroma_dir": "voice_rag/chroma_db",
     "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "ollama_http": "http://localhost:11434",
-    "ollama_model": "qwen2.5:3b",
+    "ollama_model": "mistral:7b",
     "coqui_model": "tts_models/en/ljspeech/fast_pitch",
     "record_seconds_default": 15,
     "sample_rate": 16000,
