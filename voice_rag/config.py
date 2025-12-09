@@ -31,7 +31,7 @@ CONFIG: Dict[str, Any] = {
     # --------------------------
     "ollama_http": "http://localhost:11434",
     "ollama_model": "mistral:7b", # "qwen2.5:3b",
-    "llm_max_tokens": 1200,
+    "llm_max_tokens": 2400,
 
     # --------------------------
     # TTS
