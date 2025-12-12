@@ -191,17 +191,17 @@ The following diagram illustrates the high-level architecture and data flow of *
 ```mermaid
 flowchart TD
     A[User Input] -->|Text| B[Text Handler]
-    A -->|Voice| C[Voice Handler (STT)]
+    A -->|Voice| C[Voice Handler STT]
     B --> D[RAG Agent]
-    C --> D[RAG Agent]
+    C --> D
 
     D --> M{Web Retrieval Enabled?}
-    M -->|Yes| W[Web Retriever]
+    M -->|Yes| W[Web Retriever (Cached)]
     M -->|No| E[Local Retrieval]
 
     W --> E[Context Retrieval]
 
-    E --> F[LLM (Ollama)]
+    E --> F[LLM Ollama]
     F --> G[Answer Generation (Streamed)]
 
     G --> H{TTS Enabled?}
@@ -211,6 +211,7 @@ flowchart TD
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
+
 ```
 
 ### Flow Description
