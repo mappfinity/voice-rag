@@ -1,59 +1,62 @@
-## \# Local Voice-RAG
+# Local Voice-RAG
 
 ![My Picture](voice_rag/img/voice-rag.PNG)
 
-Local Voice-RAG is a **fully offline Retrieval-Augmented Generation
-(RAG) assistant** optimized for CPU, with **optional online web
-retrieval** capabilities. It supports:
+Local Voice-RAG is a **fully offline Retrieval-Augmented Generation (RAG) assistant** optimized for CPU, with **optional online web retrieval** capabilities. It supports:
 
--   **Text & voice queries**
--   **PDF/TXT indexing**
--   **Semantic search**
--   **Speech-to-Text (STT)**
--   **Text-to-Speech (TTS)**
--   **Web retrievers (Wikipedia, arXiv, Tavily)**
--   **Interactive CLI & Gradio UI**
+- **Text & voice queries**
+- **PDF/TXT indexing**
+- **Semantic search**
+- **Speech-to-Text (STT)**
+- **Text-to-Speech (TTS)**
+- **Web retrievers (Wikipedia, arXiv, Tavily)**
+- **Interactive CLI & Gradio UI**
+- **Live token streaming** from Ollama into the Gradio UI *(new)*
 
 Powered by:
 
--   **Ollama** (LLM)
--   **Faster-Whisper** (STT)
--   **Coqui TTS**
--   **ChromaDB** (vector store)
+- **Ollama** (LLM)
+- **Faster-Whisper** (STT)
+- **Coqui TTS**
+- **ChromaDB** (vector store)
 
-------------------------------------------------------------------------
+---
 
 ## Features
 
 ### Core
 
--   Offline **PDF/TXT ingestion** with chunking
--   Local **embedding generation** for semantic search
--   **RAG-augmented answers** using local LLM
--   **TTS & STT support**
--   **CPU-optimized** Gradio UI
--   **Chat history** storage and export
+- Offline **PDF/TXT ingestion** with chunking
+- Local **embedding generation** for semantic search
+- **RAG-augmented answers** using a fully local LLM
+- **TTS & STT support**
+- **CPU-optimized** Gradio UI
+- **Chat history** storage and export
+- **Ollama streaming output** to UI *(new)*
 
-### Web Retrieval (New)
+### Web Retrieval Layer (New)
 
--   Unified **Web Retriever Layer** with:
-    -   **Wikipedia search**
-    -   **arXiv scientific paper search**
-    -   **Tavily** (if API key provided)
--   Automatic fallback between **local RAG** ↔ **web search**
--   Configurable priority and toggles in `config.py`
--   Included in both **CLI** and **UI** workflows
+- Unified **Web Retriever Layer** with:
+    - **Wikipedia search**
+    - **arXiv scientific paper search**
+    - **Tavily** (if API key provided)
+- Automatic fallback between **local RAG** ↔ **web search**
+- Configurable priority and toggles in `config.py`
+- Integrated in both **CLI** and **UI** workflows
 
-### New
+### New Additions
 
--   Interactive **CLI REPL**
-    -   Multiline input (`:ml` or `Ctrl+J`)
-    -   Audio recording (`record` or `Ctrl+R`)
-    -   TTS toggle (`speakon` / `speakoff`)
-    -   File-based audio queries (`file <wav|mp3>`)
--   **Incremental indexing**: only index new documents
--   **Hybrid UI + CLI mode**
+- **Interactive CLI REPL**
+    - Multiline input (`:ml` or `Ctrl+J`)
+    - Audio recording (`record` or `Ctrl+R`)
+    - TTS toggle (`speakon` / `speakoff`)
+    - Audio file queries (`file <wav|mp3>`)
+- **Incremental indexing**: only indexes new documents
+- **Hybrid UI + CLI mode**
+- **New caching system (`cache.py`)** for faster repeated queries *(new)*
+- **Ollama → Gradio live token streaming** for smoother UX *(new)*
 
+---
 ------------------------------------------------------------------------
 
 ## Installation
@@ -303,5 +306,4 @@ MIT License
 
 ## Contributing
 
-- PRs and issues are welcome
-- Suggestions
+- PRs and issues are welcome!
