@@ -196,13 +196,13 @@ flowchart TD
     C --> D
 
     D --> M{Web Retrieval Enabled?}
-    M -->|Yes| W[Web Retriever (Cached)]
+    M -->|Yes| W[Web Retriever <Cached>]
     M -->|No| E[Local Retrieval]
 
     W --> E[Context Retrieval]
 
     E --> F[LLM Ollama]
-    F --> G[Answer Generation (Streamed)]
+    F --> G[Answer Generation <Streamed>]
 
     G --> H{TTS Enabled?}
     H -->|Yes| I[Coqui TTS]
