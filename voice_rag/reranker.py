@@ -54,10 +54,15 @@ class MiniLMCrossEncoder(nn.Module):
     - Exposes a callable forward(queries, docs, batch_size)
     """
 
-    def __init__(self, model_name: str = CONFIG.get("cross_encoder")):
+    def __init__(self, model_name: str = None):
         super().__init__()
+        # Use upgraded cross-encoder model from config
+        if model_name is None:
+            model_name = CONFIG.get("cross_encoder", "cross-encoder/ms-marco-MiniLM-L-12-v2")
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.max_len = int(CONFIG.get("reranker_cross_max_tokens", 192))
+        # Upgraded max tokens from 48 to 96 for better context
+        self.max_len = int(CONFIG.get("reranker_cross_max_tokens", 96))
         self.model_name = model_name
 
         # Lazy init tokenizer/model with defensive try/except
@@ -65,6 +70,7 @@ class MiniLMCrossEncoder(nn.Module):
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
             self.model.eval().to(self.device)
+            logger.info(f"Loaded cross-encoder: {model_name} on {self.device}")
         except Exception as e:
             logger.exception("Failed to initialize cross-encoder model %s", model_name)
             raise
@@ -91,13 +97,18 @@ class MiniLMCrossEncoder(nn.Module):
                 pass
 
     @torch.inference_mode()
-    def forward(self, queries: Sequence[str], docs: Sequence[str], batch_size: int = 16) -> torch.Tensor:
+    def forward(self, queries: Sequence[str], docs: Sequence[str], batch_size: int = None) -> torch.Tensor:
         """Score (query, doc) pairs using the cross-encoder.
 
         Returns:
             Tensor of shape (len(docs),) with float scores.
         """
         assert len(queries) == len(docs), "queries and docs must be same length"
+
+        # Use batch size from config if not specified
+        if batch_size is None:
+            batch_size = CONFIG.get("reranker_cross_batch_size", 8)
+
         all_scores = []
 
         for i in range(0, len(docs), batch_size):
@@ -169,17 +180,31 @@ class ReRanker:
             embed_fn: Callable[[Sequence[str]], Union[np.ndarray, List[List[float]]]],
             ollama: Optional[Any] = None,
             normalize_embeddings: bool = True,
-            cross_encoder_batch_size: int = CONFIG.get("reranker_cross_batch_size", 4),
-            mmr_lambda: float = CONFIG.get("mmr_lambda", 0.6),
-            use_cross_encoder: bool = CONFIG.get("reranker_use_cross_encoder", False),
+            cross_encoder_batch_size: int = None,
+            mmr_lambda: float = None,
+            use_cross_encoder: bool = None,
             cross_encoder: Optional[nn.Module] = None,
     ):
         self.embed_fn = embed_fn
         self.ollama = ollama
         self.normalize_embeddings = normalize_embeddings
+
+        # Use config defaults if not explicitly provided
+        if cross_encoder_batch_size is None:
+            cross_encoder_batch_size = CONFIG.get("reranker_cross_batch_size", 8)
+        if mmr_lambda is None:
+            mmr_lambda = CONFIG.get("mmr_lambda", 0.7)
+        if use_cross_encoder is None:
+            use_cross_encoder = CONFIG.get("reranker_use_cross_encoder", True)
+
         self.cross_encoder_batch_size = int(cross_encoder_batch_size)
         self.mmr_lambda = float(mmr_lambda)
         self.use_cross_encoder = bool(use_cross_encoder)
+
+        # Log configuration for debugging
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info(f"ReRanker initialized: cross_encoder={self.use_cross_encoder}, "
+                        f"mmr_lambda={self.mmr_lambda}, batch_size={self.cross_encoder_batch_size}")
 
         # Initialize cross_encoder lazily and defensively
         if cross_encoder is not None:
@@ -247,6 +272,10 @@ class ReRanker:
 
         scores = []
         bs = max(1, int(self.cross_encoder_batch_size))
+
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info(f"Cross-encoder rescoring {len(docs)} documents with batch_size={bs}")
+
         try:
             for i in range(0, len(docs), bs):
                 chunk = docs[i:i+bs]
@@ -258,7 +287,10 @@ class ReRanker:
             raise
 
         if scores:
-            return np.concatenate(scores, axis=0)
+            result = np.concatenate(scores, axis=0)
+            if CONFIG.get("verbose_retrieval", False):
+                logger.info(f"Cross-encoder scores: mean={result.mean():.3f}, std={result.std():.3f}")
+            return result
         return np.array([])
 
     # -----------------------------
@@ -284,7 +316,19 @@ class ReRanker:
             top_k: int,
             lambda_param: Optional[float] = None,
     ) -> List[int]:
+        """Select top_k documents using Maximal Marginal Relevance.
+
+        Args:
+            q_emb: Query embedding
+            d_emb: Document embeddings matrix
+            top_k: Number of documents to select
+            lambda_param: Trade-off between relevance and diversity (higher = more relevance)
+        """
         lambda_param = float(lambda_param) if lambda_param is not None else float(self.mmr_lambda)
+
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info(f"MMR selection with lambda={lambda_param} (relevance vs diversity trade-off)")
+
         if d_emb is None or d_emb.size == 0:
             return []
         n = int(d_emb.shape[0])
@@ -316,6 +360,9 @@ class ReRanker:
             selected.append(best_idx)
             remaining.remove(best_idx)
 
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info(f"MMR selected {len(selected)} documents")
+
         return selected
 
     # -----------------------------
@@ -325,8 +372,8 @@ class ReRanker:
             self,
             query: str,
             candidates: Sequence[Dict[str, Any]],
-            top_k: int = 5,
-            use_mmr: bool = True,
+            top_k: int = None,
+            use_mmr: bool = None,
             return_scores: bool = False,
     ) -> List[Dict[str, Any]]:
         """Rerank candidate dicts and return a list of dicts with 'text','meta','score'.
@@ -334,12 +381,21 @@ class ReRanker:
         Args:
             query: user query string
             candidates: sequence of {'text':..., 'meta':..., 'embedding':..., ...}
-            top_k: number of final items to return
-            use_mmr: whether to apply MMR selection
+            top_k: number of final items to return (defaults to config max_retrieval_topk)
+            use_mmr: whether to apply MMR selection (defaults to config mmr_use)
             return_scores: if True, keep the internal _score key for debugging
         """
         if not candidates:
             return []
+
+        # Use config defaults if not specified
+        if top_k is None:
+            top_k = CONFIG.get("max_retrieval_topk", 5)
+        if use_mmr is None:
+            use_mmr = CONFIG.get("mmr_use", True)
+
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info(f"Reranking {len(candidates)} candidates, target top_k={top_k}, use_mmr={use_mmr}")
 
         # Normalize candidate entries defensively
         normalized_cands = []
@@ -366,6 +422,9 @@ class ReRanker:
         # 1) If using cross-encoder, prefer that path
         if self.use_cross_encoder and self.cross_encoder is not None:
             try:
+                if CONFIG.get("verbose_retrieval", False):
+                    logger.info("Using cross-encoder reranking path")
+
                 raw_scores = self.cross_encoder_rescore(query, texts)
                 norm_scores = self._safe_normalize_scores(raw_scores)
                 # choose top_k by normalized score
@@ -380,6 +439,10 @@ class ReRanker:
 
                 # sort descending
                 results.sort(key=lambda x: x.get("_score", 0.0), reverse=True)
+
+                if CONFIG.get("verbose_retrieval", False):
+                    logger.info(f"Cross-encoder reranking complete, returned {len(results)} results")
+
                 if not return_scores:
                     for r in results:
                         r.pop("_score", None)
@@ -389,6 +452,9 @@ class ReRanker:
                 # continue to embedding path
 
         # 2) Embedding-based reranking (cosine similarity + optional MMR)
+        if CONFIG.get("verbose_retrieval", False):
+            logger.info("Using embedding-based reranking path")
+
         # Build embeddings matrix, computing missing ones via embed_fn
         embeddings: List[np.ndarray] = []
         missing_indices: List[int] = []
@@ -409,6 +475,8 @@ class ReRanker:
                     missing_indices.append(i)
 
         if missing_indices:
+            if CONFIG.get("verbose_retrieval", False):
+                logger.info(f"Computing embeddings for {len(missing_indices)} missing candidates")
             try:
                 computed = self.embed_texts([texts[i] for i in missing_indices])
                 # assign them back
@@ -452,6 +520,8 @@ class ReRanker:
                 logger.exception("MMR selection failed; falling back to top-k by score")
                 chosen_idx = np.argsort(-norm_scores)[:int(top_k)].tolist()
         else:
+            if CONFIG.get("verbose_retrieval", False):
+                logger.info("Using simple top-k selection (no MMR)")
             chosen_idx = np.argsort(-norm_scores)[:int(top_k)].tolist()
 
         results = []
@@ -463,6 +533,10 @@ class ReRanker:
             results.append(item)
 
         results.sort(key=lambda x: x.get("_score", 0.0), reverse=True)
+
+        if CONFIG.get("verbose_retrieval", False):
+            avg_score = np.mean([r.get("_score", 0.0) for r in results]) if results else 0.0
+            logger.info(f"Embedding reranking complete, {len(results)} results, avg_score={avg_score:.3f}")
 
         if not return_scores:
             for r in results:

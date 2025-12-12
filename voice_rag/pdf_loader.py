@@ -70,10 +70,40 @@ class PDFTextLoader:
     """
     Load text from PDF or TXT files, split into sentences, and produce
     overlapping text chunks suitable for embedding/indexing.
+
+    Uses hierarchical text splitting with configurable chunk sizes and overlap.
     """
     pdf_paths: List[Path]
-    chunk_size: int = 900
-    chunk_overlap: int = 200
+    chunk_size: int = None  # Will use CONFIG default if None
+    chunk_overlap: int = None  # Will use CONFIG default if None
+    min_chunk_size: int = None  # Will use CONFIG default if None
+    separators: List[str] = None  # Will use CONFIG default if None
+
+    def __post_init__(self):
+        """Initialize chunking parameters from config if not provided."""
+        if self.chunk_size is None:
+            self.chunk_size = CONFIG.get("chunk_size", 512)
+        if self.chunk_overlap is None:
+            self.chunk_overlap = CONFIG.get("chunk_overlap", 128)
+        if self.min_chunk_size is None:
+            self.min_chunk_size = CONFIG.get("min_chunk_size", 100)
+        if self.separators is None:
+            self.separators = CONFIG.get("separators", ["\n\n", "\n", ". ", " ", ""])
+
+        # Validate parameters
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({self.chunk_overlap}) must be less than "
+                f"chunk_size ({self.chunk_size})"
+            )
+
+        if self.min_chunk_size > self.chunk_size:
+            warn(f"min_chunk_size ({self.min_chunk_size}) > chunk_size ({self.chunk_size}), "
+                 f"adjusting min_chunk_size to {self.chunk_size // 2}")
+            self.min_chunk_size = self.chunk_size // 2
+
+        info(f"PDFTextLoader initialized: chunk_size={self.chunk_size}, "
+             f"overlap={self.chunk_overlap}, min_size={self.min_chunk_size}")
 
     # -----------------------------
     # Text Extraction
@@ -163,7 +193,55 @@ class PDFTextLoader:
         return ""
 
     # -----------------------------
-    # Sentence Splitting
+    # Hierarchical Text Splitting
+    # -----------------------------
+    def _split_text_hierarchical(self, text: str) -> List[str]:
+        """
+        Split text using hierarchical separators (paragraphs, then sentences, etc.).
+
+        This approach tries to split on natural boundaries in order of preference:
+        1. Double newlines (paragraphs)
+        2. Single newlines
+        3. Sentence boundaries (". ")
+        4. Spaces
+        5. Character level (last resort)
+
+        Returns:
+            List of text segments
+        """
+        if not text or not text.strip():
+            return []
+
+        segments = [text]
+
+        # Apply each separator hierarchically
+        for separator in self.separators:
+            if not separator:  # Empty separator means character-level split
+                continue
+
+            new_segments = []
+            for segment in segments:
+                if len(segment.split()) <= self.chunk_size:
+                    # Segment is already small enough
+                    new_segments.append(segment)
+                else:
+                    # Split on this separator
+                    parts = segment.split(separator)
+                    for i, part in enumerate(parts):
+                        if part.strip():
+                            # Re-add separator except for last part
+                            if i < len(parts) - 1 and separator:
+                                new_segments.append(part + separator)
+                            else:
+                                new_segments.append(part)
+
+            segments = new_segments
+
+        # Filter out empty segments and strip whitespace
+        return [s.strip() for s in segments if s.strip()]
+
+    # -----------------------------
+    # Sentence Splitting (fallback)
     # -----------------------------
     def _sentence_split(self, text: str) -> List[str]:
         """
@@ -180,51 +258,88 @@ class PDFTextLoader:
         return [s.strip() for s in parts if s.strip()]
 
     # -----------------------------
-    # Text Chunking
+    # Text Chunking with Overlap
     # -----------------------------
     def simple_chunker(self, text: str) -> List[str]:
         """
-        Chunk text by sentence boundaries into overlapping windows.
+        Chunk text using hierarchical splitting with overlapping windows.
+
+        Process:
+        1. Split text hierarchically (paragraphs → sentences → words)
+        2. Combine segments into chunks of target size
+        3. Add overlap between chunks for context continuity
+        4. Filter chunks below minimum size
 
         Returns:
             A list of chunk strings.
         """
-        if not text:
+        if not text or not text.strip():
             return []
 
-        sentences = self._sentence_split(text)
-        if not sentences:
+        # First, try hierarchical splitting
+        segments = self._split_text_hierarchical(text)
+
+        # If hierarchical splitting didn't work well, fall back to sentence splitting
+        if not segments or (len(segments) == 1 and len(segments[0].split()) > self.chunk_size * 2):
+            sentences = self._sentence_split(text)
+            if sentences:
+                segments = sentences
+
+        if not segments:
             return []
 
         chunks = []
         cur = []
-        cur_len = 0
-        max_len = self.chunk_size
-        overlap = self.chunk_overlap
+        cur_len = 0  # Track length in words
 
-        for s in sentences:
-            slen = len(s.split())
+        for segment in segments:
+            seg_len = len(segment.split())
 
-            if cur_len + slen <= max_len:
-                cur.append(s)
-                cur_len += slen
+            # If segment alone exceeds chunk_size, split it further
+            if seg_len > self.chunk_size:
+                # If we have accumulated content, emit it first
+                if cur:
+                    chunk_text = " ".join(cur).strip()
+                    if len(chunk_text.split()) >= self.min_chunk_size:
+                        chunks.append(chunk_text)
+                    cur = []
+                    cur_len = 0
+
+                # Split long segment by words
+                words = segment.split()
+                for i in range(0, len(words), self.chunk_size - self.chunk_overlap):
+                    chunk_words = words[i:i + self.chunk_size]
+                    chunk_text = " ".join(chunk_words).strip()
+                    if len(chunk_words) >= self.min_chunk_size:
+                        chunks.append(chunk_text)
                 continue
 
-            # Emit full chunk
-            chunks.append(" ".join(cur).strip())
-
-            # Prepare next chunk start with overlap
-            if overlap > 0:
-                tail_words = " ".join(cur).split()[-overlap:]
-                cur = [" ".join(tail_words), s]
-                cur_len = len(" ".join(cur).split())
+            # Check if adding this segment would exceed chunk_size
+            if cur_len + seg_len <= self.chunk_size:
+                cur.append(segment)
+                cur_len += seg_len
             else:
-                cur = [s]
-                cur_len = slen
+                # Emit current chunk
+                chunk_text = " ".join(cur).strip()
+                if len(chunk_text.split()) >= self.min_chunk_size:
+                    chunks.append(chunk_text)
 
-        # Final chunk
+                # Start new chunk with overlap
+                if self.chunk_overlap > 0 and cur:
+                    # Take last N words for overlap
+                    overlap_text = " ".join(cur)
+                    overlap_words = overlap_text.split()[-self.chunk_overlap:]
+                    cur = [" ".join(overlap_words), segment]
+                    cur_len = len(" ".join(cur).split())
+                else:
+                    cur = [segment]
+                    cur_len = seg_len
+
+        # Emit final chunk
         if cur:
-            chunks.append(" ".join(cur).strip())
+            chunk_text = " ".join(cur).strip()
+            if len(chunk_text.split()) >= self.min_chunk_size:
+                chunks.append(chunk_text)
 
         return chunks
 
@@ -249,11 +364,30 @@ class PDFTextLoader:
 
             chunks = self.simple_chunker(text)
 
+            # Log chunk statistics
+            if chunks:
+                avg_chunk_size = sum(len(c.split()) for c in chunks) / len(chunks)
+                info(f"Produced {len(chunks)} chunks from {p.name} "
+                     f"(avg size: {avg_chunk_size:.0f} words)")
+            else:
+                warn(f"No valid chunks produced from {p.name}")
+
             for idx, chunk in enumerate(chunks):
                 all_chunks.append(chunk)
-                metadatas.append({"source": p.name, "chunk_index": idx})
-
-            info(f"Produced {len(chunks)} chunks from {p.name}")
+                meta = {
+                    "source": p.name,
+                    "chunk_index": idx,
+                    "chunk_size": len(chunk.split()),
+                    "total_chunks": len(chunks)
+                }
+                metadatas.append(meta)
 
         info(f"Total chunks produced: {len(all_chunks)}")
+
+        if all_chunks:
+            avg_size = sum(len(c.split()) for c in all_chunks) / len(all_chunks)
+            min_size = min(len(c.split()) for c in all_chunks)
+            max_size = max(len(c.split()) for c in all_chunks)
+            info(f"Chunk size stats: avg={avg_size:.0f}, min={min_size}, max={max_size} words")
+
         return all_chunks, metadatas
