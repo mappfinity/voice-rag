@@ -193,25 +193,24 @@ flowchart TD
     A[User Input] -->|Text| B[Text Handler]
     A -->|Voice| C[Voice Handler (STT)]
     B --> D[RAG Agent]
-    C --> D
+    C --> D[RAG Agent]
 
     D --> M{Web Retrieval Enabled?}
     M -->|Yes| W[Web Retriever]
     M -->|No| E[Local Retrieval]
 
-    W --> E
+    W --> E[Context Retrieval]
 
     E --> F[LLM (Ollama)]
     F --> G[Answer Generation (Streamed)]
-    G --> H{TTS Enabled?}
 
+    G --> H{TTS Enabled?}
     H -->|Yes| I[Coqui TTS]
     H -->|No| J[Text Response]
 
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
-
 ```
 
 ### Flow Description
