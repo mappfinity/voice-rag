@@ -202,8 +202,7 @@ flowchart TD
     W --> E[Context Retrieval]
 
     E --> F[LLM Ollama]
-    F --> G[Answer Generation]
-
+    F --> G[Answer Generation (Streamed)]
     G --> H{TTS Enabled?}
     H -->|Yes| I[Coqui TTS]
     H -->|No| J[Text Response]
@@ -211,6 +210,7 @@ flowchart TD
     I --> J
     J --> K[Display in UI or CLI]
     K --> L[Chat History Storage]
+
 
 ```
 
@@ -251,25 +251,26 @@ python -m voice_rag.history.export_txt
 
 ```
 voice-rag/
-├── run.py                     # Main launcher
+├── run.py                      # Main launcher
 ├── requirements.txt
 ├── LICENSE
 ├── README.md
 └── voice_rag/
-    ├── agent.py               # Core RAG agent
-    ├── agent_helpers.py       # Audio recording & utilities
-    ├── cli.py                 # CLI + hotkeys + interactive REPL
-    ├── config.py              # Config + directory setup
-    ├── embeddings.py          # ChromaDB + embeddings
-    ├── history.py             # Chat history storage/export
-    ├── hotkeys.py             # Hotkey manager
-    ├── pdf_loader.py          # PDF/TXT parsing & chunking
-    ├── reranker.py            # Optional reranking
-    ├── stt.py                 # Faster Whisper STT wrapper
-    ├── tts.py                 # Coqui TTS wrapper
-    ├── ui.py                  # Gradio UI
-    ├── utils.py               # Logging & helpers
-    └── web_retreivers.py      # Web Retreivers (wiki, ArXiv, Tavily)
+    ├── agent.py                # Core RAG agent
+    ├── agent_helpers.py        # Recording & utilities
+    ├── cache.py                # Query/result caching (new)
+    ├── cli.py                  # CLI REPL
+    ├── config.py               # Global config
+    ├── embeddings.py           # Embeddings + ChromaDB
+    ├── history.py              # Chat history
+    ├── hotkeys.py              # Hotkey handling
+    ├── pdf_loader.py           # PDF/TXT parsing + chunking
+    ├── reranker.py             # Cross-encoder reranking
+    ├── stt.py                  # Faster-Whisper STT
+    ├── tts.py                  # Coqui TTS
+    ├── ui.py                   # Gradio UI (with streaming)
+    ├── utils.py                # Logging helpers
+    └── web_retreivers.py       # Web retrievers
 ```
 
 ---
